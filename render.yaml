@@ -1,0 +1,31 @@
+# Render Blueprint: free web service. Database is Neon (DATABASE_URL), email is Resend's API (RESEND_API_KEY).
+# Photos are stored in the database (MEDIA_STORAGE=db) because free Render services have no persistent disk.
+services:
+  - type: web
+    name: box-box-share
+    runtime: python
+    plan: free
+    region: singapore
+    buildCommand: pip install -r requirements.lock && python manage.py collectstatic --noinput
+    startCommand: sh render-start.sh
+    healthCheckPath: /rules/
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.8
+      - key: DEBUG
+        value: "0"
+      - key: SECRET_KEY
+        generateValue: true
+      - key: MEDIA_STORAGE
+        value: db
+      - key: ALLOWED_EMAIL_DOMAINS
+        value: my.cityu.edu.hk
+      - key: DEFAULT_FROM_EMAIL
+        value: Box Box Share <onboarding@resend.dev>
+      - key: WEB_CONCURRENCY
+        value: "2"
+      # Entered by you in the Render dashboard, never committed:
+      - key: DATABASE_URL
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false

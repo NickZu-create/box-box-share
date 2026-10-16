@@ -1,4 +1,4 @@
-import re, tempfile, shutil, base64
+import re, tempfile, shutil, base64, json
 from concurrent.futures import ThreadPoolExecutor
 from unittest import mock
 from datetime import timedelta
@@ -306,3 +306,40 @@ class AIDraft(TestCase):
         c=Client();c.force_login(make_user('pending',False))
         self.assertEqual(c.post('/items/ai-draft/',{'photo':photo()}).status_code,403)
         self.assertEqual(Client().post('/items/ai-draft/').status_code,302)
+
+DB_STORAGE={'default':{'BACKEND':'market.dbstorage.DatabaseStorage'},'staticfiles':{'BACKEND':'django.contrib.staticfiles.storage.StaticFilesStorage'}}
+
+# The whole flow again with photos kept in the database (MEDIA_STORAGE=db, used on Render free).
+@override_settings(STORAGES=DB_STORAGE)
+class CampusFlowDatabaseStorage(CampusFlow):
+    def test_item_photo_stored_served_and_removed(self):
+        d={'title':'Lamp','category':'home','description':'Desk lamp','condition':'Good','daily':'5','deposit':'20','available_start':self.start.strftime('%Y-%m-%dT%H:%M'),'available_end':(self.end+timedelta(days=5)).strftime('%Y-%m-%dT%H:%M'),'max_days':'7','location':'Hall','status':'listed','photo':photo()}
+        self.assertEqual(self.a.post('/items/new/',d).status_code,302)
+        item=Item.objects.get(title='Lamp');p=item.photos.get()
+        self.assertTrue(StoredFile.objects.filter(name=p.image.name).exists())
+        r=Client().get(f'/media/item/{p.pk}/');self.assertEqual(r.status_code,200);self.assertTrue(r.getvalue().startswith(b'\xff\xd8'))
+        d.update(photo='',remove_photos=[p.pk])
+        with self.captureOnCommitCallbacks(execute=True): self.assertEqual(self.a.post(f'/items/{item.pk}/edit/',d).status_code,302)
+        self.assertFalse(StoredFile.objects.exists())
+        self.assertEqual(Client().get(f'/media/item/{p.pk}/').status_code,404)
+
+@override_settings(EMAIL_BACKEND='market.mail.ResendBackend',RESEND_API_KEY='re_test',MAIL_LIVE=True,DEFAULT_FROM_EMAIL='Box Box Share <onboarding@resend.dev>')
+class ResendMail(TestCase):
+    def test_login_link_sent_through_api(self):
+        with mock.patch('market.mail.urlopen') as urlopen:
+            r=Client().post('/login/',{'email':'amy@my.cityu.edu.hk'})
+        self.assertContains(r,'Check your inbox')
+        req=urlopen.call_args.args[0];body=json.loads(req.data)
+        self.assertEqual((req.full_url,req.get_header('Authorization')),('https://api.resend.com/emails','Bearer re_test'))
+        self.assertEqual((body['to'],body['from']),(['amy@my.cityu.edu.hk'],'Box Box Share <onboarding@resend.dev>'))
+        self.assertRegex(body['text'],r'http://testserver/verify/\S+/')
+    def test_api_failure_reported_and_token_discarded(self):
+        with mock.patch('market.mail.urlopen',side_effect=OSError('403')):
+            r=Client().post('/login/',{'email':'amy@my.cityu.edu.hk'})
+        self.assertContains(r,'Email service unavailable')
+        self.assertFalse(LoginToken.objects.exists())
+
+class SecurityHeaders(TestCase):
+    def test_csp_and_permissions_policy(self):
+        r=Client().get('/rules/')
+        self.assertIn("script-src 'self'",r['Content-Security-Policy']);self.assertIn('camera=()',r['Permissions-Policy'])

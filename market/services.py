@@ -43,7 +43,7 @@ def throttle(key,limit,seconds):
     b.count+=1; b.save()
 
 def send_login(email,ip,origin):
-    # Only trust X-Real-IP when the app is private behind our configured Caddy proxy.
+    # Only trust the proxy's client-IP header when the app is reachable solely through that proxy.
     throttle('ip:'+ip,20,3600)
     email=valid_email(email)
     throttle('minute:'+email,1,60)
@@ -193,4 +193,4 @@ def resolve_dispute(order_id,admin_user,outcome):
 
 
 def client_ip(request):
-    return request.META.get('HTTP_X_REAL_IP',request.META.get('REMOTE_ADDR','unknown')) if settings.TRUST_PROXY_IP else request.META.get('REMOTE_ADDR','unknown')
+    return request.META.get(settings.CLIENT_IP_HEADER,request.META.get('REMOTE_ADDR','unknown')) if settings.TRUST_PROXY_IP else request.META.get('REMOTE_ADDR','unknown')

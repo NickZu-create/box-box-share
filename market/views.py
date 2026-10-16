@@ -49,7 +49,7 @@ def signin(request):
     if request.method=='POST':
         try:
             send_login(request.POST.get('email',''),client_ip(request),request.build_absolute_uri('/').rstrip('/'))
-            messages.success(request,'已建立登入郵件，請查收。 / Sign-in email created. Check your inbox.' if settings.EMAIL_HOST else '開發模式：登入郵件已寫入伺服器 dev-mail 目錄，未發送到學校郵箱。 / Development only: message saved to server dev-mail; not delivered.')
+            messages.success(request,'已建立登入郵件，請查收。 / Sign-in email created. Check your inbox.' if settings.MAIL_LIVE else '開發模式：登入郵件已寫入伺服器 dev-mail 目錄，未發送到學校郵箱。 / Development only: message saved to server dev-mail; not delivered.')
         except ValidationError as exc: error(request,exc)
     return render(request,'market/login.html')
 

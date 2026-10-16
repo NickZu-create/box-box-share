@@ -141,3 +141,9 @@ class Report(models.Model):
     resolved = models.BooleanField(default=False)
     resolution = models.TextField(blank=True)
     created = models.DateTimeField(auto_now_add=True)
+# Photo bytes for market.dbstorage.DatabaseStorage (MEDIA_STORAGE=db).
+class StoredFile(models.Model):
+    name = models.CharField(max_length=255,unique=True)
+    content = models.BinaryField()
+    size = models.PositiveIntegerField()
+    created = models.DateTimeField(auto_now_add=True)
