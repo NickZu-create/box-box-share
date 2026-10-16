@@ -41,7 +41,7 @@ Caddy 是唯一公開入口。app/db 都沒有 host port；不要新增公開 ap
 | 變數 | 用途 |
 |---|---|
 | `DOMAIN`、`ACME_EMAIL` | Caddy 主機名及憑證聯絡信箱 |
-| `SECRET_KEY` | 隨機且至少 40 字元；生產拒絕預設值及 REPLACE 佔位值 |
+| `SECRET_KEY` | 隨機且至少 32 字元；生產拒絕預設值及 REPLACE 佔位值 |
 | `DEBUG` | 生產固定為 `0`；Compose 已強制設定 |
 | `ALLOWED_HOSTS` | 逗號分隔的精確域名 |
 | `CSRF_TRUSTED_ORIGINS` | 逗號分隔的可信 HTTPS origins |

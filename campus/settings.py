@@ -5,7 +5,8 @@ from django.core.exceptions import ImproperlyConfigured
 BASE_DIR = Path(__file__).resolve().parent.parent
 DEBUG = os.getenv('DEBUG', '1') == '1'
 SECRET_KEY = os.getenv('SECRET_KEY', 'local-only-change-before-deployment')
-if not DEBUG and (SECRET_KEY == 'local-only-change-before-deployment' or SECRET_KEY.startswith('REPLACE') or len(SECRET_KEY)<40):
+# 32+ random characters; Render's dashboard "Generate" button produces exactly 32.
+if not DEBUG and (SECRET_KEY == 'local-only-change-before-deployment' or SECRET_KEY.startswith('REPLACE') or len(SECRET_KEY)<32):
     raise ImproperlyConfigured('Set SECRET_KEY')
 ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1,testserver').split(',')
 CSRF_TRUSTED_ORIGINS = [x for x in os.getenv('CSRF_TRUSTED_ORIGINS', '').split(',') if x]
