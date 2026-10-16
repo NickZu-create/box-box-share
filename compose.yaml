@@ -1,0 +1,55 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-cityushare}
+      POSTGRES_USER: ${POSTGRES_USER:-cityushare}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+      interval: 5s
+      timeout: 5s
+      retries: 12
+  app:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DEBUG: "0"
+      POSTGRES_HOST: db
+      POSTGRES_DB: ${POSTGRES_DB:-cityushare}
+      POSTGRES_USER: ${POSTGRES_USER:-cityushare}
+      MEDIA_ROOT: /data/media
+      TRUST_PROXY_IP: "1"
+    volumes:
+      - private_media:/data/media
+      - staticfiles:/app/staticfiles
+    depends_on:
+      db:
+        condition: service_healthy
+    # No public app or database port. Caddy is the only ingress.
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      DOMAIN: ${DOMAIN:?Set DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL:?Set ACME_EMAIL}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - staticfiles:/srv/static:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - app
+volumes:
+  pgdata:
+  private_media:
+  staticfiles:
+  caddy_data:
+  caddy_config:

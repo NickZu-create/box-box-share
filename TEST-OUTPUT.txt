@@ -1,0 +1,61 @@
+Creating test database for alias 'default' ('/Users/justin/Documents/Codex/2026-10-14/cityuhk-hkd-asia-hong-kong-1/outputs/cityu-share/test.sqlite3')...
+Destroying old test database for alias 'default' ('/Users/justin/Documents/Codex/2026-10-14/cityuhk-hkd-asia-hong-kong-1/outputs/cityu-share/test.sqlite3')...
+Found 24 test(s).
+Operations to perform:
+  Synchronize unmigrated apps: messages, staticfiles
+  Apply all migrations: admin, auth, contenttypes, market, sessions
+Synchronizing apps without migrations:
+  Creating tables...
+    Running deferred SQL...
+Running migrations:
+  Applying contenttypes.0001_initial... OK
+  Applying auth.0001_initial... OK
+  Applying admin.0001_initial... OK
+  Applying admin.0002_logentry_remove_auto_add... OK
+  Applying admin.0003_logentry_add_action_flag_choices... OK
+  Applying contenttypes.0002_remove_content_type_name... OK
+  Applying auth.0002_alter_permission_name_max_length... OK
+  Applying auth.0003_alter_user_email_max_length... OK
+  Applying auth.0004_alter_user_username_opts... OK
+  Applying auth.0005_alter_user_last_login_null... OK
+  Applying auth.0006_require_contenttypes_0002... OK
+  Applying auth.0007_alter_validators_add_error_messages... OK
+  Applying auth.0008_alter_user_username_max_length... OK
+  Applying auth.0009_alter_user_last_name_max_length... OK
+  Applying auth.0010_alter_group_name_max_length... OK
+  Applying auth.0011_update_proxy_permissions... OK
+  Applying auth.0012_alter_user_first_name_max_length... OK
+  Applying market.0001_initial... OK
+  Applying market.0002_booking_guard... OK
+  Applying sessions.0001_initial...test_admin_order_evidence_and_report_pages (market.tests.CampusFlow.test_admin_order_evidence_and_report_pages) ... ok
+test_all_pages_render_both_languages (market.tests.CampusFlow.test_all_pages_render_both_languages) ... ok
+test_bilateral_states_and_payment (market.tests.CampusFlow.test_bilateral_states_and_payment) ... ok
+test_changed_quote_cannot_silently_change_price (market.tests.CampusFlow.test_changed_quote_cannot_silently_change_price) ... ok
+test_csrf_enforced (market.tests.CampusFlow.test_csrf_enforced) ... ok
+test_database_rejects_bypass_overlap (market.tests.CampusFlow.test_database_rejects_bypass_overlap) ... ok
+test_day_rounding_invalid_intervals (market.tests.CampusFlow.test_day_rounding_invalid_intervals) ... ok
+test_dispute_resolution_requires_admin_and_bilateral_return (market.tests.CampusFlow.test_dispute_resolution_requires_admin_and_bilateral_return) ... ok
+test_domain_and_unverified_blocked (market.tests.CampusFlow.test_domain_and_unverified_blocked) ... ok
+test_email_rate_limit (market.tests.CampusFlow.test_email_rate_limit) ... ok
+test_email_single_use_expiry_scanner_safe (market.tests.CampusFlow.test_email_single_use_expiry_scanner_safe) ... ok
+test_extension_requires_approval_and_conflict_recheck (market.tests.CampusFlow.test_extension_requires_approval_and_conflict_recheck) ... ok
+test_filters_wanted_offers_and_chats (market.tests.CampusFlow.test_filters_wanted_offers_and_chats) ... ok
+test_overdue_hours (market.tests.CampusFlow.test_overdue_hours) ... ok
+test_overlap_adjacency_cancel_release (market.tests.CampusFlow.test_overlap_adjacency_cancel_release) ... ok
+test_owner_edits_only_and_private_email (market.tests.CampusFlow.test_owner_edits_only_and_private_email) ... ok
+test_partial_handover_cannot_cancel (market.tests.CampusFlow.test_partial_handover_cannot_cancel) ... ok
+test_permission_isolation_orders_chat_evidence_admin (market.tests.CampusFlow.test_permission_isolation_orders_chat_evidence_admin) ... ok
+test_restricted_account_blocked_immediately (market.tests.CampusFlow.test_restricted_account_blocked_immediately) ... ok
+test_review_requires_completion_and_once (market.tests.CampusFlow.test_review_requires_completion_and_once) ... ok
+test_snapshot_daily_and_terms_immutable (market.tests.CampusFlow.test_snapshot_daily_and_terms_immutable) ... ok
+test_two_account_email_to_review_http (market.tests.CampusFlow.test_two_account_email_to_review_http) ... ok
+test_upload_validation (market.tests.CampusFlow.test_upload_validation) ... ok
+test_two_simultaneous_accepts_exactly_one_wins (market.tests.SimultaneousAcceptance.test_two_simultaneous_accepts_exactly_one_wins) ... ok
+
+----------------------------------------------------------------------
+Ran 24 tests in 0.471s
+
+OK
+Destroying test database for alias 'default' ('/Users/justin/Documents/Codex/2026-10-14/cityuhk-hkd-asia-hong-kong-1/outputs/cityu-share/test.sqlite3')...
+ OK
+System check identified no issues (0 silenced).

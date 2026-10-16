@@ -1,0 +1,26 @@
+{
+    email {$ACME_EMAIL}
+}
+{$DOMAIN} {
+    request_body {
+        max_size 8MB
+    }
+    header {
+        # same-origin, not no-referrer: no-referrer makes browsers send "Origin: null" on form POSTs, which fails Django's CSRF check.
+        Referrer-Policy "same-origin"
+        Permissions-Policy "camera=(), microphone=(), geolocation=()"
+        X-Content-Type-Options "nosniff"
+        Content-Security-Policy "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'self'"
+    }
+    handle /static/* {
+        root * /srv
+        file_server
+    }
+    handle {
+        reverse_proxy app:8000 {
+            header_up X-Real-IP {remote_host}
+            header_up X-Forwarded-Proto {scheme}
+        }
+    }
+    # Access logs intentionally disabled: login links contain bearer tokens.
+}
