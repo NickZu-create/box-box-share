@@ -276,6 +276,113 @@ class PurchaseSurvey(TestCase):
         self.assertEqual(s['total_kg'],Decimal('1215.2'));self.assertContains(Client().get('/impact/'),'根據 30 個「會／不會」回答')
         c=Client();c.post('/language/',{'lang':'en'});self.assertContains(c.get('/impact/'),'based on 30 yes/no answers')
 
+class Social(TestCase):
+    def setUp(self):
+        self.a=make_user('amy');self.b=make_user('ben');self.c=make_user('cat')
+        Profile.objects.update(social=True)
+        self.ca,self.cb,self.cc=Client(),Client(),Client()
+        for client,u in ((self.ca,self.a),(self.cb,self.b),(self.cc,self.c)): client.force_login(u)
+        self.when=(timezone.now()+timedelta(days=3)).replace(second=0,microsecond=0)
+    def post_buddy(self,client=None,**extra):
+        d={'kind':'outdoor','title':'Weekend hike','description':'Easy trail, tent available','when':self.when.strftime('%Y-%m-%dT%H:%M'),'location':'Lion Rock','spots':'1','active':'on',**extra}
+        self.assertEqual((client or self.ca).post('/buddies/new/',d).status_code,302)
+        return Buddy.objects.latest('pk')
+    def social(self,client,user,action): return client.post(f'/people/{user.pk}/social/',{'action':action})
+    def test_buddy_join_accept_spots_and_chat(self):
+        item=make_item(self.a);b=self.post_buddy(item=item.pk)
+        self.assertContains(Client().get('/buddies/'),'Weekend hike');self.assertContains(self.cb.get(f'/items/{item.pk}/'),'Weekend hike')
+        self.cb.post(f'/buddies/{b.pk}/',{'action':'join','text':'Count me in'});self.cc.post(f'/buddies/{b.pk}/',{'action':'join'})
+        self.assertContains(self.cb.post(f'/buddies/{b.pk}/',{'action':'join'},follow=True),'Already asked to join')
+        self.assertEqual(b.joins.count(),2);self.assertTrue(Notification.objects.filter(user=self.a,url=f'/buddies/{b.pk}/').exists())
+        thread=Thread.objects.get(buddy=b,first=self.b);self.assertEqual(thread.messages.get().text,'Count me in')
+        self.assertContains(self.ca.get(f'/messages/{thread.pk}/'),'Weekend hike')
+        jb,jc=b.joins.order_by('pk')
+        self.assertEqual(self.cb.post(f'/buddies/{b.pk}/',{'action':'accept','join':jb.pk}).status_code,403)
+        self.ca.post(f'/buddies/{b.pk}/',{'action':'accept','join':jb.pk})
+        self.assertContains(self.ca.post(f'/buddies/{b.pk}/',{'action':'accept','join':jc.pk},follow=True),'No spots left')
+        self.assertEqual(list(b.joins.order_by('pk').values_list('status',flat=True)),['accepted','pending'])
+        self.assertEqual(self.ca.post(f'/buddies/{b.pk}/',{'action':'decline','join':999}).status_code,404)
+        self.ca.post(f'/buddies/{b.pk}/',{'action':'decline','join':jc.pk});declined=Thread.objects.get(buddy=b,first=self.c)
+        self.cc.post(f'/messages/{declined.pk}/',{'text':'Please?'});self.assertFalse(declined.messages.exists())
+        # Only the host and accepted buddies see who joined; others see the count.
+        self.assertContains(self.cb.get(f'/buddies/{b.pk}/'),'這次的搭子');self.assertNotContains(self.cc.get(f'/buddies/{b.pk}/'),'這次的搭子')
+        self.assertEqual(met_ids(self.b),{self.a.pk});self.assertEqual(met_ids(self.c),set())
+        self.ca.post(f'/buddies/{b.pk}/',{'action':'join'});self.assertEqual(b.joins.count(),2)
+        Buddy.objects.filter(pk=b.pk).update(when=timezone.now()-timedelta(hours=1))
+        self.assertNotContains(Client().get('/buddies/'),'Weekend hike')
+    def test_buddy_form_rules(self):
+        other=make_item(self.b)
+        r=self.ca.post('/buddies/new/',{'kind':'study','title':'Past','description':'x','when':(timezone.now()-timedelta(days=1)).strftime('%Y-%m-%dT%H:%M'),'location':'Library','spots':'2','item':other.pk})
+        self.assertContains(r,'Must be in the future');self.assertFalse(Buddy.objects.exists())
+        # Someone else's item cannot be attached.
+        self.assertContains(self.ca.post('/buddies/new/',{'kind':'study','title':'x','description':'x','when':self.when.strftime('%Y-%m-%dT%H:%M'),'location':'Library','spots':'2','item':other.pk}),'errorlist')
+        self.assertEqual(self.cb.get(f'/buddies/{self.post_buddy().pk}/edit/').status_code,404)
+        c=Client();c.force_login(make_user('pending',False));self.assertEqual(c.get('/buddies/new/').status_code,403)
+    def test_friends_only_after_meeting(self):
+        self.social(self.ca,self.b,'friend');self.assertFalse(Connection.objects.exists())
+        self.assertContains(self.ca.get(f'/people/{self.b.pk}/'),'你們還沒有在這裡見過面')
+        o=apply(make_item(self.a).pk,self.b,self.when,self.when+timedelta(days=1))
+        with self.assertRaises(ValidationError): connect(self.a,self.b,'friend')
+        act(o.pk,self.a,'accept');self.assertEqual(met_ids(self.a),{self.b.pk})
+        Profile.objects.filter(user=self.b).update(social=False)
+        with self.assertRaises(ValidationError): connect(self.a,self.b,'friend')
+        Profile.objects.filter(user=self.b).update(social=True)
+        self.social(self.ca,self.b,'friend');self.assertContains(self.cb.get('/friends/'),'好友請求')
+        self.assertTrue(Notification.objects.filter(user=self.b,url='/friends/').exists())
+        self.social(self.cb,self.a,'friend');self.assertTrue(mutual(self.a,self.b,'friend'))
+        self.assertEqual(Notification.objects.filter(url__startswith='/people/').count(),2)
+        r=self.social(self.cb,self.a,'chat');thread=Thread.objects.get(item=None,order=None,buddy=None)
+        self.assertRedirects(r,f'/messages/{thread.pk}/');self.cb.post(f'/messages/{thread.pk}/',{'text':'Hi friend'})
+        self.assertEqual(thread.messages.count(),1);self.assertEqual(self.social(self.ca,self.b,'chat').url,f'/messages/{thread.pk}/')
+        self.assertEqual(self.social(self.cc,self.a,'chat').status_code,403);self.assertEqual(self.cc.get(f'/messages/{thread.pk}/').status_code,403)
+        self.social(self.ca,self.b,'unfriend');self.assertFalse(Connection.objects.exists())
+        self.cb.post(f'/messages/{thread.pk}/',{'text':'Still there?'});self.assertEqual(thread.messages.count(),1)
+        self.assertContains(self.cb.get(f'/messages/{thread.pk}/'),'此對話已關閉')
+    def test_crush_secret_until_mutual(self):
+        b=self.post_buddy();BuddyJoin.objects.create(buddy=b,user=self.b,status='accepted')
+        self.social(self.ca,self.b,'crush');self.assertFalse(Connection.objects.exists())
+        self.assertContains(self.ca.post('/profile/',{'nickname':'amy','dating':'on','social':'on'}),'Confirm you are 18 or older')
+        self.ca.post('/profile/',{'nickname':'amy','dating':'on','adult':'on','social':'on','bio':'Hiker','interests':'hiking, 攝影'})
+        self.assertTrue(Profile.objects.get(user=self.a).dating)
+        notes=Notification.objects.count();self.social(self.ca,self.b,'crush')
+        self.assertTrue(Connection.objects.filter(sender=self.a,kind='crush').exists());self.assertEqual(Notification.objects.count(),notes)
+        # The recipient sees nothing of a one-sided crush.
+        page=self.cb.get(f'/people/{self.a.pk}/');self.assertContains(page,'#攝影');self.assertNotContains(page,'互相心動');self.assertNotContains(page,'你已悄悄心動')
+        self.assertNotContains(self.cb.get('/friends/'),'互相心動')
+        Profile.objects.filter(user=self.b).update(dating=True);self.social(self.cb,self.a,'crush')
+        self.assertTrue(mutual(self.a,self.b,'crush'));self.assertEqual(Notification.objects.filter(text__contains='互相心動').count(),2)
+        self.assertContains(self.ca.get(f'/people/{self.b.pk}/'),'你們互相心動');self.assertContains(self.ca.get('/friends/'),'>ben ↗<')
+        self.ca.post('/profile/',{'nickname':'amy','social':'on'})
+        self.assertFalse(Connection.objects.filter(sender=self.a).exists());self.assertFalse(mutual(self.a,self.b,'crush'))
+    def test_block(self):
+        b=self.post_buddy(client=self.cb,spots='3');BuddyJoin.objects.create(buddy=b,user=self.a,status='accepted')
+        o=apply(make_item(self.a).pk,self.b,self.when,self.when+timedelta(days=1));act(o.pk,self.a,'accept')
+        connect(self.a,self.b,'friend');connect(self.b,self.a,'friend')
+        item_thread=Thread.objects.create(item=o.item,first=self.b,second=self.a)
+        notes=Notification.objects.filter(user=self.b).count();self.social(self.ca,self.b,'block')
+        self.assertFalse(Connection.objects.exists());self.assertEqual(BuddyJoin.objects.get().status,'declined')
+        self.assertEqual(Notification.objects.filter(user=self.b).count(),notes)
+        with self.assertRaises(ValidationError): connect(self.b,self.a,'friend')
+        self.assertNotContains(self.ca.get('/buddies/'),'Weekend hike');self.assertContains(self.cc.get('/buddies/'),'Weekend hike')
+        self.assertContains(self.cb.get(f'/people/{self.a.pk}/'),'暫時無法與此用戶建立連結')
+        self.cb.post(f'/messages/{item_thread.pk}/',{'text':'hey'});self.assertFalse(item_thread.messages.exists())
+        self.assertEqual(self.cb.post(f'/items/{o.item.pk}/contact/').status_code,403)
+        # The order chat stays open so the item can still be handed back.
+        self.cb.post(f'/messages/{o.thread.pk}/',{'text':'Returning tomorrow'});self.assertEqual(o.thread.messages.count(),1)
+        self.assertContains(self.ca.get('/friends/'),'解除封鎖')
+        self.social(self.ca,self.b,'unblock');self.assertFalse(Block.objects.exists())
+    def test_pages_render_both_languages_and_report(self):
+        b=self.post_buddy();BuddyJoin.objects.create(buddy=b,user=self.b,status='accepted')
+        for language in ('en','zh'):
+            for client in (self.ca,self.cb):
+                client.post('/language/',{'lang':language})
+                for url in ('/buddies/','/buddies/?kind=outdoor&q=hike','/buddies/new/',f'/buddies/{b.pk}/','/friends/',f'/people/{self.a.pk}/',f'/people/{self.b.pk}/','/profile/','/messages/','/rules/'):
+                    self.assertEqual(client.get(url).status_code,200,(url,language))
+            self.assertEqual(self.ca.get(f'/buddies/{b.pk}/edit/').status_code,200)
+        self.assertEqual(Client().get(f'/buddies/{b.pk}/').status_code,200);self.assertEqual(Client().get('/friends/').status_code,302)
+        self.assertEqual(self.cc.post(f'/report/buddy/{b.pk}/',{'reason':'Spam activity'}).status_code,302)
+        self.assertEqual(Report.objects.get().kind,'buddy')
+
 REPLY='草稿如下：\n```json\n{"title":"  入門單反相機  ","category":"weapons","description":"黑色相機，附鏡頭。","condition":"九成新","daily":"-5","extra":"ignored"}\n```'
 
 @override_settings(AI_API_KEY='test-key')

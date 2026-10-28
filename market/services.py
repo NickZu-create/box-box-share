@@ -10,6 +10,7 @@ from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.files.base import ContentFile
 from django.core.mail import send_mail
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 from .models import *
 
@@ -191,6 +192,85 @@ def resolve_dispute(order_id,admin_user,outcome):
     Audit.objects.create(order=o,actor=admin_user,action='管理員解決糾紛 / Moderator resolution',data={'outcome':outcome})
     for person in (o.item.owner,o.borrower): notify(person,'糾紛已處理 / Dispute resolved',f'/orders/{o.pk}/')
 
+# Friends and crushes only between people who actually met here: a borrow that got past pending, or the same accepted buddy activity.
+def met_ids(user):
+    ids=set()
+    for pair in Order.objects.exclude(status__in=['pending','cancelled']).filter(Q(borrower=user)|Q(item__owner=user)).values_list('item__owner_id','borrower_id'): ids.update(pair)
+    buddies=BuddyJoin.objects.filter(status='accepted').filter(Q(user=user)|Q(buddy__owner=user)).values_list('buddy_id',flat=True)
+    for pair in BuddyJoin.objects.filter(status='accepted',buddy_id__in=list(buddies)).values_list('buddy__owner_id','user_id'): ids.update(pair)
+    ids.discard(user.pk)
+    return ids
+def blocked(a,b): return Block.objects.filter(Q(blocker=a,blocked=b)|Q(blocker=b,blocked=a)).exists()
+def mutual(a,b,kind): return Connection.objects.filter(Q(sender=a,recipient=b)|Q(sender=b,recipient=a),kind=kind).count()==2
+def direct_thread(a,b):
+    first,second=sorted((a,b),key=lambda u:u.pk)
+    return Thread.objects.get_or_create(first=first,second=second,item=None,order=None,buddy=None)[0]
+def can_message(thread,user):
+    other=thread.second if thread.first_id==user.pk else thread.first
+    if thread.order_id: return True
+    if blocked(user,other) or other.profile.restricted: return False
+    # Buddy chats close once the joiner leaves or the host declines; the joiner is always `first`.
+    if thread.buddy_id: return BuddyJoin.objects.filter(buddy_id=thread.buddy_id,user_id=thread.first_id).exclude(status='declined').exists()
+    return bool(thread.item_id) or mutual(user,other,'friend') or mutual(user,other,'crush')
+
+@transaction.atomic
+def connect(sender,recipient,kind):
+    # Lock both profiles in a fixed order so two simultaneous requests still see each other.
+    profiles={p.user_id:p for p in Profile.objects.select_for_update().filter(user__in=[sender,recipient]).order_by('pk')}
+    mine,theirs=profiles.get(sender.pk),profiles.get(recipient.pk)
+    if kind not in ('friend','crush') or sender.pk==recipient.pk or not theirs or theirs.restricted or not recipient.is_active: raise ValidationError('Invalid request / 請求無效')
+    if blocked(sender,recipient): raise ValidationError('Unavailable / 無法連結')
+    if recipient.pk not in met_ids(sender): raise ValidationError('Meet through a borrow or buddy activity first / 先透過借物或搭子活動認識對方')
+    if kind=='friend' and not (mine.social and theirs.social): raise ValidationError('Both people need to be open to new friends / 雙方須開放交友')
+    if kind=='crush' and not mine.dating: raise ValidationError('Turn on dating in your profile first / 請先在個人資料開放心動配對')
+    throttle('connect:'+str(sender.pk),30,86400)
+    _,created=Connection.objects.get_or_create(sender=sender,recipient=recipient,kind=kind)
+    matched=Connection.objects.filter(sender=recipient,recipient=sender,kind=kind).exists() and (kind=='friend' or theirs.dating)
+    if created and matched:
+        direct_thread(sender,recipient)
+        text='你們互相心動了 / It’s a match' if kind=='crush' else '你們已成為好友 / You are now friends'
+        notify(sender,text,f'/people/{recipient.pk}/'); notify(recipient,text,f'/people/{sender.pk}/')
+    elif created and kind=='friend': notify(recipient,'有人想加你為好友 / New friend request','/friends/')
+    return matched
+
+def disconnect(user,other,kind):
+    # Unfriending or declining a request clears both sides; withdrawing a crush only removes your own.
+    rows=Connection.objects.filter(sender=user,recipient=other,kind=kind)
+    if kind=='friend': rows=Connection.objects.filter(Q(sender=user,recipient=other)|Q(sender=other,recipient=user),kind='friend')
+    rows.delete()
+
+@transaction.atomic
+def block(user,other):
+    if user.pk==other.pk: raise ValidationError('Invalid request / 請求無效')
+    Block.objects.get_or_create(blocker=user,blocked=other)
+    Connection.objects.filter(Q(sender=user,recipient=other)|Q(sender=other,recipient=user)).delete()
+    BuddyJoin.objects.filter(Q(user=user,buddy__owner=other)|Q(user=other,buddy__owner=user)).update(status='declined')
+
+@transaction.atomic
+def join_buddy(buddy_id,user,text):
+    b=Buddy.objects.select_for_update().select_related('owner__profile').get(pk=buddy_id)
+    if b.owner_id==user.pk or not b.active or b.when<=timezone.now(): raise ValidationError('Not open for joining / 活動不開放報名')
+    if b.owner.profile.restricted or blocked(user,b.owner): raise ValidationError('Unavailable / 無法報名')
+    if len(text)>300: raise ValidationError('Up to 300 characters / 留言上限 300 字')
+    if BuddyJoin.objects.filter(buddy=b,user=user).exists(): raise ValidationError('Already asked to join / 已報名')
+    throttle('join:'+str(user.pk),20,86400)
+    j=BuddyJoin.objects.create(buddy=b,user=user,text=text)
+    thread,_=Thread.objects.get_or_create(buddy=b,first=user,second=b.owner,item=None,order=None)
+    if text: Message.objects.create(thread=thread,sender=user,text=text)
+    notify(b.owner,'有人想做你的搭子 / New buddy request',f'/buddies/{b.pk}/')
+    return j
+
+@transaction.atomic
+def answer_join(join_id,owner,accept):
+    buddy_id=BuddyJoin.objects.values_list('buddy_id',flat=True).get(pk=join_id)
+    b=Buddy.objects.select_for_update().get(pk=buddy_id)
+    j=BuddyJoin.objects.select_for_update().get(pk=join_id)
+    if b.owner_id!=owner.pk: raise PermissionDenied()
+    if j.status!='pending': raise ValidationError('Already answered / 已處理')
+    if accept and b.joins.filter(status='accepted').count()>=b.spots: raise ValidationError('No spots left / 名額已滿')
+    j.status='accepted' if accept else 'declined'; j.save()
+    notify(j.user,'搭子報名已獲接受 / You’re in' if accept else '搭子報名未獲接受 / Buddy request declined',f'/buddies/{b.pk}/')
+    return j
 
 def client_ip(request):
     return request.META.get(settings.CLIENT_IP_HEADER,request.META.get('REMOTE_ADDR','unknown')) if settings.TRUST_PROXY_IP else request.META.get('REMOTE_ADDR','unknown')

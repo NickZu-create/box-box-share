@@ -22,13 +22,20 @@ class WantedAdmin(admin.ModelAdmin):
     fields=['title','owner','description','active']
     readonly_fields=['title','owner','description']
     def has_add_permission(self,request): return False
+@admin.register(Buddy)
+class BuddyAdmin(admin.ModelAdmin):
+    list_display=['title','owner','kind','when','active']
+    list_filter=['active','kind']
+    fields=['title','owner','description','location','when','active']
+    readonly_fields=['title','owner','description','location','when']
+    def has_add_permission(self,request): return False
 @admin.register(Report)
 class ReportAdmin(admin.ModelAdmin):
     list_display=['kind','target','reporter','resolved','created']
     list_filter=['resolved','kind']
     readonly_fields=['reporter','kind','target','target_link','reason','created']
     def target_link(self,obj):
-        route={'item':f'/admin/market/item/{obj.target}/change/','user':f'/people/{obj.target}/','order':f'/admin/market/order/{obj.target}/change/'}
+        route={'item':f'/admin/market/item/{obj.target}/change/','user':f'/people/{obj.target}/','order':f'/admin/market/order/{obj.target}/change/','buddy':f'/admin/market/buddy/{obj.target}/change/'}
         return format_html('<a href="{}">Open target</a>',route.get(obj.kind,'/admin/'))
     def has_add_permission(self,request): return False
     def has_delete_permission(self,request,obj=None): return False
