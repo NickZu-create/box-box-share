@@ -15,10 +15,9 @@ from django.utils import timezone
 from .models import *
 from .services import *
 from .impact import impact_summary
-from .teamup import review_gpa, purge_proofs, start_team
-from io import StringIO
-from django.contrib.auth.models import Permission
-from django.core.management import call_command
+from . import social, i18n
+from django.db import connection
+from django.db.migrations.executor import MigrationExecutor
 
 def make_user(name,verified=True):
     u=User.objects.create_user(name+'@my.cityu.edu.hk',email=name+'@my.cityu.edu.hk')
@@ -73,7 +72,7 @@ class CampusFlow(TestCase):
         self.assertEqual(order.reviews.count(),2)
         self.assertFalse(User.objects.get(email='alice@my.cityu.edu.hk').has_usable_password())
     def test_domain_and_unverified_blocked(self):
-        c=Client();self.assertContains(c.post('/login/',{'email':'x@evilmy.cityu.edu.hk'}),'Only approved school email')
+        c=Client();self.assertContains(c.post('/login/',{'email':'x@evilmy.cityu.edu.hk'}),'僅接受指定學校郵箱')
         self.assertEqual(LoginToken.objects.count(),0)
         u=make_user('unverified',False);c.force_login(u)
         self.assertEqual(c.get('/items/new/').status_code,403)
@@ -84,13 +83,13 @@ class CampusFlow(TestCase):
         path=re.search(r'http://testserver(/verify/[^\s]+)',mail.outbox[-1].body).group(1)
         c.get(path);self.assertFalse(LoginToken.objects.get().used)
         c.post(path);self.assertTrue(LoginToken.objects.get().used)
-        self.assertContains(Client().post(path),'Expired or used link')
+        self.assertContains(Client().post(path),'連結過期或已使用')
         raw=secrets.token_urlsafe(32)
         LoginToken.objects.create(email='old@my.cityu.edu.hk',digest=hashlib.sha256(raw.encode()).hexdigest(),expires=timezone.now()-timedelta(seconds=1))
         with self.assertRaises(ValidationError): consume_token(raw)
     def test_email_rate_limit(self):
         c=Client();c.post('/login/',{'email':'new@my.cityu.edu.hk'})
-        self.assertContains(c.post('/login/',{'email':'new@my.cityu.edu.hk'}),'Too many requests')
+        self.assertContains(c.post('/login/',{'email':'new@my.cityu.edu.hk'}),'請稍後再試')
         self.assertEqual(len(mail.outbox),1)
     def test_overlap_adjacency_cancel_release(self):
         first=self.booking();second=self.booking()
@@ -105,7 +104,7 @@ class CampusFlow(TestCase):
         dates['quote_token']=re.search(r'name="quote_token" value="([^"]+)"',response.content.decode()).group(1)
         Item.objects.filter(pk=self.item.pk).update(daily=30)
         dates['action']='apply'
-        self.assertContains(self.b.post(f'/items/{self.item.pk}/',dates),'Listing terms changed')
+        self.assertContains(self.b.post(f'/items/{self.item.pk}/',dates),'物品價格或條款已更改')
         self.assertFalse(Order.objects.exists())
     def test_admin_order_evidence_and_report_pages(self):
         o=self.booking();admin=User.objects.create_superuser('admin','operator@example.org','platform-admin-only')
@@ -280,319 +279,6 @@ class PurchaseSurvey(TestCase):
         self.assertEqual(s['total_kg'],Decimal('1215.2'));self.assertContains(Client().get('/impact/'),'根據 30 個「會／不會」回答')
         c=Client();c.post('/language/',{'lang':'en'});self.assertContains(c.get('/impact/'),'based on 30 yes/no answers')
 
-class Social(TestCase):
-    def setUp(self):
-        self.a=make_user('amy');self.b=make_user('ben');self.c=make_user('cat')
-        Profile.objects.update(social=True)
-        self.ca,self.cb,self.cc=Client(),Client(),Client()
-        for client,u in ((self.ca,self.a),(self.cb,self.b),(self.cc,self.c)): client.force_login(u)
-        self.when=(timezone.now()+timedelta(days=3)).replace(second=0,microsecond=0)
-    def post_buddy(self,client=None,**extra):
-        d={'kind':'outdoor','title':'Weekend hike','description':'Easy trail, tent available','when':self.when.strftime('%Y-%m-%dT%H:%M'),'location':'Lion Rock','spots':'1','active':'on',**extra}
-        self.assertEqual((client or self.ca).post('/buddies/new/',d).status_code,302)
-        return Buddy.objects.latest('pk')
-    def social(self,client,user,action): return client.post(f'/people/{user.pk}/social/',{'action':action})
-    def test_buddy_join_accept_spots_and_chat(self):
-        item=make_item(self.a);b=self.post_buddy(item=item.pk)
-        self.assertContains(Client().get('/buddies/'),'Weekend hike');self.assertContains(self.cb.get(f'/items/{item.pk}/'),'Weekend hike')
-        self.cb.post(f'/buddies/{b.pk}/',{'action':'join','text':'Count me in'});self.cc.post(f'/buddies/{b.pk}/',{'action':'join'})
-        self.assertContains(self.cb.post(f'/buddies/{b.pk}/',{'action':'join'},follow=True),'Already asked to join')
-        self.assertEqual(b.joins.count(),2);self.assertTrue(Notification.objects.filter(user=self.a,url=f'/buddies/{b.pk}/').exists())
-        thread=Thread.objects.get(buddy=b,first=self.b);self.assertEqual(thread.messages.get().text,'Count me in')
-        self.assertContains(self.ca.get(f'/messages/{thread.pk}/'),'Weekend hike')
-        jb,jc=b.joins.order_by('pk')
-        self.assertEqual(self.cb.post(f'/buddies/{b.pk}/',{'action':'accept','join':jb.pk}).status_code,403)
-        self.ca.post(f'/buddies/{b.pk}/',{'action':'accept','join':jb.pk})
-        self.assertContains(self.ca.post(f'/buddies/{b.pk}/',{'action':'accept','join':jc.pk},follow=True),'No spots left')
-        self.assertEqual(list(b.joins.order_by('pk').values_list('status',flat=True)),['accepted','pending'])
-        self.assertEqual(self.ca.post(f'/buddies/{b.pk}/',{'action':'decline','join':999}).status_code,404)
-        self.ca.post(f'/buddies/{b.pk}/',{'action':'decline','join':jc.pk});declined=Thread.objects.get(buddy=b,first=self.c)
-        self.cc.post(f'/messages/{declined.pk}/',{'text':'Please?'});self.assertFalse(declined.messages.exists())
-        # Only the host and accepted buddies see who joined; others see the count.
-        self.assertContains(self.cb.get(f'/buddies/{b.pk}/'),'這次的搭子');self.assertNotContains(self.cc.get(f'/buddies/{b.pk}/'),'這次的搭子')
-        self.assertEqual(met_ids(self.b),{self.a.pk});self.assertEqual(met_ids(self.c),set())
-        self.ca.post(f'/buddies/{b.pk}/',{'action':'join'});self.assertEqual(b.joins.count(),2)
-        Buddy.objects.filter(pk=b.pk).update(when=timezone.now()-timedelta(hours=1))
-        self.assertNotContains(Client().get('/buddies/'),'Weekend hike')
-    def test_buddy_form_rules(self):
-        other=make_item(self.b)
-        r=self.ca.post('/buddies/new/',{'kind':'study','title':'Past','description':'x','when':(timezone.now()-timedelta(days=1)).strftime('%Y-%m-%dT%H:%M'),'location':'Library','spots':'2','item':other.pk})
-        self.assertContains(r,'Must be in the future');self.assertFalse(Buddy.objects.exists())
-        # Someone else's item cannot be attached.
-        self.assertContains(self.ca.post('/buddies/new/',{'kind':'study','title':'x','description':'x','when':self.when.strftime('%Y-%m-%dT%H:%M'),'location':'Library','spots':'2','item':other.pk}),'errorlist')
-        self.assertEqual(self.cb.get(f'/buddies/{self.post_buddy().pk}/edit/').status_code,404)
-        c=Client();c.force_login(make_user('pending',False));self.assertEqual(c.get('/buddies/new/').status_code,403)
-    def test_friends_only_after_meeting(self):
-        self.social(self.ca,self.b,'friend');self.assertFalse(Connection.objects.exists())
-        self.assertContains(self.ca.get(f'/people/{self.b.pk}/'),'你們還沒有在這裡見過面')
-        o=apply(make_item(self.a).pk,self.b,self.when,self.when+timedelta(days=1))
-        with self.assertRaises(ValidationError): connect(self.a,self.b,'friend')
-        act(o.pk,self.a,'accept');self.assertEqual(met_ids(self.a),{self.b.pk})
-        Profile.objects.filter(user=self.b).update(social=False)
-        with self.assertRaises(ValidationError): connect(self.a,self.b,'friend')
-        Profile.objects.filter(user=self.b).update(social=True)
-        self.social(self.ca,self.b,'friend');self.assertContains(self.cb.get('/friends/'),'好友請求')
-        self.assertTrue(Notification.objects.filter(user=self.b,url='/friends/').exists())
-        self.social(self.cb,self.a,'friend');self.assertTrue(mutual(self.a,self.b,'friend'))
-        self.assertEqual(Notification.objects.filter(url__startswith='/people/').count(),2)
-        r=self.social(self.cb,self.a,'chat');thread=Thread.objects.get(item=None,order=None,buddy=None)
-        self.assertRedirects(r,f'/messages/{thread.pk}/');self.cb.post(f'/messages/{thread.pk}/',{'text':'Hi friend'})
-        self.assertEqual(thread.messages.count(),1);self.assertEqual(self.social(self.ca,self.b,'chat').url,f'/messages/{thread.pk}/')
-        self.assertEqual(self.social(self.cc,self.a,'chat').status_code,403);self.assertEqual(self.cc.get(f'/messages/{thread.pk}/').status_code,403)
-        self.social(self.ca,self.b,'unfriend');self.assertFalse(Connection.objects.exists())
-        self.cb.post(f'/messages/{thread.pk}/',{'text':'Still there?'});self.assertEqual(thread.messages.count(),1)
-        self.assertContains(self.cb.get(f'/messages/{thread.pk}/'),'此對話已關閉')
-    def test_crush_secret_until_mutual(self):
-        b=self.post_buddy();BuddyJoin.objects.create(buddy=b,user=self.b,status='accepted')
-        self.social(self.ca,self.b,'crush');self.assertFalse(Connection.objects.exists())
-        self.assertContains(self.ca.post('/profile/dating/',{'dating':'on'}),'Confirm you are 18 or older')
-        self.ca.post('/profile/dating/',{'dating':'on','adult':'on'});self.ca.post('/profile/social/',{'social':'on','bio':'Hiker','interests':'hiking, 攝影'})
-        self.assertTrue(Profile.objects.get(user=self.a).dating)
-        notes=Notification.objects.count();self.social(self.ca,self.b,'crush')
-        self.assertTrue(Connection.objects.filter(sender=self.a,kind='crush').exists());self.assertEqual(Notification.objects.count(),notes)
-        # The recipient sees nothing of a one-sided crush.
-        page=self.cb.get(f'/people/{self.a.pk}/');self.assertContains(page,'#攝影');self.assertNotContains(page,'互相心動');self.assertNotContains(page,'你已悄悄心動')
-        self.assertNotContains(self.cb.get('/friends/'),'互相心動')
-        Profile.objects.filter(user=self.b).update(dating=True);self.social(self.cb,self.a,'crush')
-        self.assertTrue(mutual(self.a,self.b,'crush'));self.assertEqual(Notification.objects.filter(text__contains='互相心動').count(),2)
-        self.assertContains(self.ca.get(f'/people/{self.b.pk}/'),'你們互相心動');self.assertContains(self.ca.get('/friends/'),'>ben ↗<')
-        self.ca.post('/profile/dating/',{})
-        self.assertFalse(Connection.objects.filter(sender=self.a).exists());self.assertFalse(mutual(self.a,self.b,'crush'))
-    def test_block(self):
-        b=self.post_buddy(client=self.cb,spots='3');BuddyJoin.objects.create(buddy=b,user=self.a,status='accepted')
-        o=apply(make_item(self.a).pk,self.b,self.when,self.when+timedelta(days=1));act(o.pk,self.a,'accept')
-        connect(self.a,self.b,'friend');connect(self.b,self.a,'friend')
-        item_thread=Thread.objects.create(item=o.item,first=self.b,second=self.a)
-        notes=Notification.objects.filter(user=self.b).count();self.social(self.ca,self.b,'block')
-        self.assertFalse(Connection.objects.exists());self.assertEqual(BuddyJoin.objects.get().status,'declined')
-        self.assertEqual(Notification.objects.filter(user=self.b).count(),notes)
-        with self.assertRaises(ValidationError): connect(self.b,self.a,'friend')
-        self.assertNotContains(self.ca.get('/buddies/'),'Weekend hike');self.assertContains(self.cc.get('/buddies/'),'Weekend hike')
-        self.assertContains(self.cb.get(f'/people/{self.a.pk}/'),'暫時無法與此用戶建立連結')
-        self.cb.post(f'/messages/{item_thread.pk}/',{'text':'hey'});self.assertFalse(item_thread.messages.exists())
-        self.assertEqual(self.cb.post(f'/items/{o.item.pk}/contact/').status_code,403)
-        # The order chat stays open so the item can still be handed back.
-        self.cb.post(f'/messages/{o.thread.pk}/',{'text':'Returning tomorrow'});self.assertEqual(o.thread.messages.count(),1)
-        self.assertContains(self.ca.get('/friends/'),'解除封鎖')
-        self.social(self.ca,self.b,'unblock');self.assertFalse(Block.objects.exists())
-    def test_pages_render_both_languages_and_report(self):
-        b=self.post_buddy();BuddyJoin.objects.create(buddy=b,user=self.b,status='accepted')
-        for language in ('en','zh'):
-            for client in (self.ca,self.cb):
-                client.post('/language/',{'lang':language})
-                for url in ('/buddies/','/buddies/?kind=outdoor&q=hike','/buddies/new/',f'/buddies/{b.pk}/','/friends/',f'/people/{self.a.pk}/',f'/people/{self.b.pk}/','/profile/','/messages/','/rules/'):
-                    self.assertEqual(client.get(url).status_code,200,(url,language))
-            self.assertEqual(self.ca.get(f'/buddies/{b.pk}/edit/').status_code,200)
-        self.assertEqual(Client().get(f'/buddies/{b.pk}/').status_code,200);self.assertEqual(Client().get('/friends/').status_code,302)
-        self.assertEqual(self.cc.post(f'/report/buddy/{b.pk}/',{'reason':'Spam activity'}).status_code,302)
-        self.assertEqual(Report.objects.get().kind,'buddy')
-
-def school_user(name,domain):
-    u=User.objects.create_user(name+'@'+domain,email=name+'@'+domain)
-    Profile.objects.create(user=u,nickname=name,verified=True)
-    return u
-
-class TeamUp(TestCase):
-    def setUp(self):
-        self.lead=make_user('leader');self.ann=make_user('annie');self.bob=make_user('bobby')
-        self.cl,self.ca,self.cb=Client(),Client(),Client()
-        for client,u in ((self.cl,self.lead),(self.ca,self.ann),(self.cb,self.bob)): client.force_login(u)
-        self.form={'kind':'course','course_code':'ee 1001','title':'Line follower robot','description':'Arduino robot for EE1001','size':'1','skills':'Python, PCB Design','duration':'6 weeks','deadline':(timezone.localdate()+timedelta(days=30)).isoformat(),'mode':'hybrid'}
-    def new_team(self,**extra):
-        self.assertEqual(self.cl.post('/teams/new/',{**self.form,**extra}).status_code,302)
-        return Team.objects.latest('pk')
-    def act(self,client,team,action,**data): return client.post(f'/teams/{team.pk}/',{'action':action,**data})
-    def test_create_apply_review_members_chat_and_disband(self):
-        t=self.new_team()
-        self.assertEqual((t.course_code,t.university.code,t.status),('EE1001','cityuhk','recruiting'))
-        self.assertEqual(list(t.members.values_list('user','role')),[(self.lead.pk,'leader')])
-        self.assertContains(Client().get('/teams/'),'Line follower robot')
-        self.assertContains(self.ca.get('/teams/',{'course':'ee1001','skill':'pcb'}),'Line follower robot')
-        self.assertNotContains(self.ca.get('/teams/',{'skill':'matlab'}),'Line follower robot')
-        thread=Thread.objects.get(team=t)
-        self.act(self.ca,t,'apply',message='I can do the PCB')
-        a=TeamApplication.objects.get();self.assertEqual(a.status,'pending');self.assertFalse(t.members.filter(user=self.ann).exists())
-        self.assertTrue(Notification.objects.filter(user=self.lead,url=f'/teams/{t.pk}/').exists())
-        # Only the leader decides; applying alone gives no chat access.
-        for client in (self.ca,self.cb): self.assertEqual(self.act(client,t,'accept',application=a.pk).status_code,403)
-        self.assertEqual(self.ca.get(f'/messages/{thread.pk}/').status_code,403)
-        self.assertEqual(self.act(self.cl,t,'accept',application=999).status_code,404)
-        self.act(self.cl,t,'accept',application=a.pk)
-        self.assertEqual(t.members.get(user=self.ann).role,'member');self.assertEqual(TeamApplication.objects.get().status,'accepted')
-        self.ca.post(f'/messages/{thread.pk}/',{'text':'Hi team'});self.ca.post(f'/messages/{thread.pk}/',{'text':'Meeting Monday?'})
-        self.assertEqual(thread.messages.count(),2)
-        self.assertEqual(Notification.objects.filter(user=self.lead,url=f'/messages/{thread.pk}/').count(),1)
-        self.assertContains(self.ca.get('/messages/'),'Line follower robot')
-        self.act(self.cl,t,'announce',announcement='Lab 3 on Friday')
-        self.assertContains(self.ca.get(f'/teams/{t.pk}/'),'Lab 3 on Friday');self.assertNotContains(self.cb.get(f'/teams/{t.pk}/'),'Lab 3 on Friday')
-        self.assertContains(self.ca.get(f'/teams/{t.pk}/'),f'/people/{self.ann.pk}/');self.assertNotContains(self.cb.get(f'/teams/{t.pk}/'),f'/people/{self.ann.pk}/')
-        self.act(self.cb,t,'apply');b=TeamApplication.objects.get(user=self.bob)
-        self.assertEqual(self.act(self.cl,t,'accept',application=b.pk).status_code,302)
-        self.assertEqual(TeamApplication.objects.get(user=self.bob).status,'pending')
-        self.assertContains(self.cl.post(f'/teams/{t.pk}/',{'action':'accept','application':b.pk},follow=True),'Team is full')
-        self.act(self.ca,t,'leave');self.assertEqual(self.ca.get(f'/messages/{thread.pk}/').status_code,403)
-        self.act(self.cl,t,'disband');t.refresh_from_db();self.assertEqual(t.status,'disbanded')
-        self.assertEqual(TeamApplication.objects.get(user=self.bob).status,'rejected')
-        self.cl.post(f'/messages/{thread.pk}/',{'text':'Still here?'});self.assertEqual(thread.messages.count(),2)
-        self.assertNotContains(Client().get('/teams/'),'Line follower robot')
-    def test_edit_withdraw_remove_and_validation(self):
-        r=self.cl.post('/teams/new/',{**self.form,'course_code':'EE 10*01','deadline':'2000-01-01'})
-        self.assertContains(r,'For example EE1001');self.assertContains(r,'Deadline has passed');self.assertFalse(Team.objects.exists())
-        t=self.new_team()
-        self.assertEqual(self.ca.get(f'/teams/{t.pk}/edit/').status_code,404)
-        self.assertEqual(self.cl.post(f'/teams/{t.pk}/edit/',{**self.form,'title':'Robot v2'}).status_code,302);t.refresh_from_db();self.assertEqual(t.title,'Robot v2')
-        self.act(self.ca,t,'apply');self.act(self.ca,t,'withdraw');self.assertFalse(TeamApplication.objects.exists())
-        self.act(self.ca,t,'apply');self.act(self.cl,t,'accept',application=TeamApplication.objects.get().pk)
-        self.assertEqual(self.act(self.cb,t,'remove',member=self.ann.pk).status_code,403)
-        self.act(self.cl,t,'remove',member=self.ann.pk);self.assertFalse(t.members.filter(user=self.ann).exists())
-        self.act(self.cl,t,'closed');self.act(self.cb,t,'apply');self.assertFalse(TeamApplication.objects.filter(user=self.bob).exists())
-        self.assertEqual(self.cl.post(f'/report/team/{t.pk}/',{'reason':'Spam team post'}).status_code,302)
-    def test_cross_school_and_blocking(self):
-        University.objects.filter(code='hku').update(enabled=True)
-        hana=school_user('hana','connect.hku.hk');ch=Client();ch.force_login(hana)
-        t=self.new_team()
-        self.assertNotContains(ch.get('/teams/',{'scope':'all'}),'Line follower robot')
-        self.act(ch,t,'apply');self.assertFalse(TeamApplication.objects.exists())
-        Team.objects.filter(pk=t.pk).update(cross_school=True)
-        self.assertNotContains(ch.get('/teams/'),'Line follower robot');self.assertContains(ch.get('/teams/',{'scope':'all'}),'Line follower robot')
-        self.act(ch,t,'apply');self.assertTrue(TeamApplication.objects.filter(user=hana).exists())
-        self.act(self.ca,t,'apply');self.cl.post(f'/people/{self.ann.pk}/social/',{'action':'block'})
-        self.assertEqual(TeamApplication.objects.get(user=self.ann).status,'rejected')
-        Block.objects.create(blocker=self.lead,blocked=self.bob)
-        self.act(self.cb,t,'apply');self.assertFalse(TeamApplication.objects.filter(user=self.bob).exists())
-        University.objects.filter(code='hku').update(enabled=False)
-        self.assertEqual(self.act(ch,t,'withdraw').status_code,403)
-        self.assertNotContains(self.cb.get('/teams/'),'Line follower robot')
-    def test_academic_privacy_invites_and_dating_isolation(self):
-        d={'major':'Electrical Engineering','year':'2','areas':'robotics','skills':'Python, MATLAB','courses':'ee 1001','kinds':['course','hackathon'],'projects':'Robot arm','link':'https://github.com/example'}
-        self.ca.post('/profile/academic/',d);p=AcademicProfile.objects.get(user=self.ann)
-        self.assertEqual((p.public,p.courses,p.kinds),(False,'EE1001','course,hackathon'))
-        AcademicProfile.objects.filter(pk=p.pk).update(skills='PCB Design, 機器學習、Python');p.refresh_from_db();self.assertEqual(p.skill_tags,['PCB Design','機器學習','Python'])
-        self.assertEqual(self.cb.get(f'/people/{self.ann.pk}/academic/').status_code,404);self.assertNotContains(self.cb.get('/teams/people/'),'Electrical Engineering')
-        t=self.new_team();self.act(self.ca,t,'apply')
-        page=self.cl.get(f'/teams/{t.pk}/');self.assertNotContains(page,'Electrical Engineering');self.assertContains(page,'選擇不分享')
-        self.assertEqual(self.cl.get(f'/people/{self.ann.pk}/academic/').status_code,404)
-        t2=self.new_team(title='Hackathon crew');self.act(self.ca,t2,'apply',share_profile='on')
-        self.assertContains(self.cl.get(f'/teams/{t2.pk}/'),'Electrical Engineering');self.assertEqual(self.cl.get(f'/people/{self.ann.pk}/academic/').status_code,200)
-        self.assertEqual(self.cb.get(f'/people/{self.ann.pk}/academic/').status_code,404)
-        self.act(self.cl,t2,'reject',application=TeamApplication.objects.get(team=t2).pk)
-        self.assertEqual(self.cl.get(f'/people/{self.ann.pk}/academic/').status_code,404)
-        # Invitations need a public academic profile and are only a notification.
-        self.cl.post(f'/people/{self.ann.pk}/invite/',{'team':t.pk});self.assertFalse(Notification.objects.filter(user=self.ann,text__contains='邀請').exists())
-        self.ca.post('/profile/academic/',{**d,'public':'on'})
-        self.assertContains(self.cb.get('/teams/people/',{'skill':'matlab','kind':'hackathon'}),'Electrical Engineering')
-        self.assertEqual(Client().get('/teams/people/').status_code,302);self.assertEqual(Client().get(f'/people/{self.ann.pk}/academic/').status_code,302)
-        self.assertNotContains(Client().get(f'/people/{self.ann.pk}/'),'Electrical Engineering')
-        t3=self.new_team(title='Research');self.cl.post(f'/people/{self.ann.pk}/invite/',{'team':t3.pk})
-        self.assertTrue(Notification.objects.filter(user=self.ann,url=f'/teams/{t3.pk}/').exists());self.assertFalse(Thread.objects.filter(first=self.lead,second=self.ann).exists())
-        # Dating stays off by default and teammates never count as having met.
-        self.assertFalse(Profile.objects.get(user=self.ann).dating)
-        self.act(self.ca,t3,'apply');self.act(self.cl,t3,'accept',application=TeamApplication.objects.get(team=t3).pk)
-        Profile.objects.filter(user__in=[self.lead,self.ann]).update(dating=True,social=True)
-        self.assertEqual(met_ids(self.lead),set())
-        for kind in ('crush','friend'):
-            with self.assertRaises(ValidationError): connect(self.lead,self.ann,kind)
-        hub=self.cb.get('/connect/');self.assertContains(hub,'預設關閉');self.assertNotContains(hub,'annie')
-
-def pdf(body=b''): return SimpleUploadedFile('transcript.pdf',b'%PDF-1.4\n'+body+b'\n%%EOF',content_type='application/pdf')
-
-class GpaReview(TestCase):
-    def setUp(self):
-        self.student=make_user('student');self.other=make_user('peer')
-        self.reviewer=User.objects.create_user('reviewer',is_staff=True);self.reviewer.user_permissions.add(Permission.objects.get(codename='review_gpa'))
-        self.staff=User.objects.create_user('staff',is_staff=True)
-        self.cs,self.co,self.cr,self.cx=Client(),Client(),Client(),Client()
-        for client,u in ((self.cs,self.student),(self.co,self.other),(self.cr,self.reviewer),(self.cx,self.staff)): client.force_login(u)
-        self.cityu=University.objects.get(code='cityuhk')
-        self.cs.post('/profile/academic/',{'major':'Computer Science','public':'on'})
-        self.tmp=tempfile.mkdtemp();self.media=override_settings(MEDIA_ROOT=self.tmp);self.media.enable()
-    def tearDown(self): self.media.disable();shutil.rmtree(self.tmp)
-    def create(self,value='3.65',scale='4.30',submit='draft'):
-        return self.cs.post('/profile/gpa/',{'action':'create','university':self.cityu.pk,'value':value,'scale':scale,'term':'2026 Spring','submit':submit})
-    def academic(self,client=None): return (client or self.co).get(f'/people/{self.student.pk}/academic/')
-    def test_review_flow_privacy_and_retention(self):
-        self.assertContains(self.create(value='4.50'),'GPA cannot exceed the scale');self.assertFalse(GpaVerification.objects.exists())
-        self.assertRedirects(self.create(submit='review'),f'/profile/gpa/{GpaVerification.objects.get().pk}/submit/')
-        r=GpaVerification.objects.get();self.assertEqual((r.status,r.visibility),('draft','hidden'))
-        self.assertNotContains(self.academic(),'3.65')
-        url=f'/profile/gpa/{r.pk}/submit/'
-        self.assertEqual(self.co.get(url).status_code,404)
-        self.assertContains(self.cs.post(url,{'proof':pdf(b'/JavaScript (app.alert(1))')}),'active content')
-        self.assertContains(self.cs.post(url,{'proof':SimpleUploadedFile('fake.pdf',b'not a pdf',content_type='application/pdf')}),'Invalid PDF')
-        r.refresh_from_db();self.assertEqual(r.status,'draft')
-        self.cs.post(url,{'proof':pdf()});r.refresh_from_db();self.assertEqual(r.status,'pending');self.assertTrue(r.proof.name.endswith('.pdf'))
-        self.assertNotContains(self.academic(),'3.65')
-        proof=f'/media/gpa/{r.pk}/'
-        for client in (Client(),self.co,self.cx): self.assertEqual(client.get(proof).status_code,403)
-        for client in (self.cs,self.cr):
-            response=client.get(proof);self.assertEqual(response.status_code,200);self.assertIn('attachment',response['Content-Disposition']);self.assertEqual(response['Cache-Control'],'private, no-store');self.assertTrue(response.getvalue().startswith(b'%PDF-'))
-        self.assertEqual(list(r.audits.values_list('action','actor')),[('submitted',self.student.pk),('viewed_proof',self.reviewer.pk)])
-        self.assertEqual(self.cx.get('/admin/market/gpaverification/').status_code,403);self.assertEqual(self.cr.get('/admin/market/gpaverification/').status_code,200)
-        with self.assertRaises(PermissionDenied): review_gpa(r.pk,self.staff,True)
-        self.cr.post('/admin/market/gpaverification/',{'action':'approve','_selected_action':[r.pk]})
-        r.refresh_from_db();self.assertEqual((r.status,r.reviewer,r.visibility),('verified',self.reviewer,'hidden'))
-        self.assertTrue(Notification.objects.filter(user=self.student,url='/profile/gpa/').exists())
-        # Reviewed but still hidden until the student chooses to show it.
-        self.assertNotContains(self.academic(),'3.65')
-        self.cs.post('/profile/gpa/',{'action':'visibility','record':r.pk,'visibility':'exact'})
-        page=self.academic();self.assertContains(page,'GPA 3.65 / 4.30');self.assertContains(page,'平台已審核');self.assertContains(page,'2026 Spring');self.assertContains(page,'並非大學官方認證')
-        self.assertNotContains(Client().get(f'/people/{self.student.pk}/'),'3.65');self.assertNotContains(self.co.get(f'/people/{self.student.pk}/'),'3.65')
-        self.cs.post('/profile/gpa/',{'action':'visibility','record':r.pk,'visibility':'band'})
-        self.assertContains(self.academic(),'3.50–3.74');self.assertNotContains(self.academic(),'3.65')
-        self.cs.post('/profile/gpa/',{'action':'visibility','record':r.pk,'visibility':'hidden'});self.assertNotContains(self.academic(),'GPA')
-        self.create();draft=GpaVerification.objects.get(status='draft')
-        self.cs.post('/profile/gpa/',{'action':'visibility','record':draft.pk,'visibility':'exact'});draft.refresh_from_db();self.assertEqual(draft.visibility,'hidden')
-        self.co.post('/profile/gpa/',{'action':'delete','record':r.pk});self.assertTrue(GpaVerification.objects.filter(pk=r.pk).exists())
-        # Retention: the proof goes after GPA_PROOF_RETENTION_DAYS; the result and audit trail stay.
-        name=r.proof.name;self.assertTrue(r.proof.storage.exists(name))
-        GpaVerification.objects.filter(pk=r.pk).update(reviewed=timezone.now()-timedelta(days=13));self.assertEqual(purge_proofs(),0)
-        GpaVerification.objects.filter(pk=r.pk).update(reviewed=timezone.now()-timedelta(days=15))
-        with self.captureOnCommitCallbacks(execute=True): call_command('cleanup_auth',stdout=StringIO())
-        r.refresh_from_db();self.assertEqual((r.proof.name,r.status),('','verified'));self.assertIsNotNone(r.proof_removed);self.assertFalse(r.proof.storage.exists(name))
-        self.assertEqual(self.cr.get(proof).status_code,404);self.assertIn('proof_removed',r.audits.values_list('action',flat=True))
-    def test_one_pending_image_proof_withdraw_delete_and_self_review(self):
-        self.create();self.create();a,b=GpaVerification.objects.order_by('pk')
-        self.cs.post(f'/profile/gpa/{a.pk}/submit/',{'proof':photo()});a.refresh_from_db()
-        self.assertEqual(a.status,'pending');self.assertTrue(a.proof.name.endswith('.jpg'))
-        self.assertContains(self.cs.post(f'/profile/gpa/{b.pk}/submit/',{'proof':photo()}),'One review at a time')
-        r=self.cs.get(f'/media/gpa/{a.pk}/');self.assertEqual(r['Content-Type'],'image/jpeg');self.assertTrue(r.getvalue().startswith(b'\xff\xd8'))
-        name=a.proof.name
-        with self.captureOnCommitCallbacks(execute=True): self.cs.post('/profile/gpa/',{'action':'withdraw','record':a.pk})
-        a.refresh_from_db();self.assertEqual((a.status,a.proof.name),('draft',''));self.assertFalse(a.proof.storage.exists(name))
-        self.cs.post(f'/profile/gpa/{b.pk}/submit/',{'proof':photo()});b.refresh_from_db();name=b.proof.name
-        self.cs.post('/profile/gpa/',{'action':'delete','record':b.pk});self.assertTrue(GpaVerification.objects.filter(pk=b.pk).exists())
-        mine=GpaVerification.objects.create(user=self.reviewer,university=self.cityu,value=3,scale=4,term='2026 Spring',status='pending')
-        with self.assertRaises(PermissionDenied): review_gpa(mine.pk,self.reviewer,True)
-        self.cs.post('/profile/gpa/',{'action':'withdraw','record':b.pk})
-        with self.captureOnCommitCallbacks(execute=True): self.cs.post('/profile/gpa/',{'action':'delete','record':b.pk})
-        self.assertFalse(GpaVerification.objects.filter(pk=b.pk).exists());self.assertTrue(GpaAudit.objects.filter(action='deleted',record=None).exists())
-        with self.assertRaises(IntegrityError), transaction.atomic(): GpaVerification.objects.create(user=self.student,university=self.cityu,value=5,scale=4,term='x')
-
-@override_settings(EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend')
-class Universities(TestCase):
-    def sign_in(self,email):
-        c=Client();c.post('/login/',{'email':email})
-        path=re.search(r'http://testserver(/verify/[^\s]+)',mail.outbox[-1].body).group(1);c.post(path)
-        return Profile.objects.get(user__email=email)
-    def test_school_rows_control_domains_and_assignment(self):
-        self.assertTrue(University.objects.get(code='cityuhk').enabled);self.assertFalse(University.objects.get(code='hku').enabled)
-        self.assertEqual(self.sign_in('chan@my.cityu.edu.hk').university.code,'cityuhk')
-        self.assertContains(Client().post('/login/',{'email':'kim@connect.hku.hk'}),'Only approved school email')
-        University.objects.filter(code='hku').update(enabled=True)
-        self.assertContains(Client().get('/login/'),'@connect.hku.hk')
-        self.assertEqual(self.sign_in('kim@connect.hku.hk').university.code,'hku')
-        University.objects.filter(code='hku').update(enabled=False)
-        c=Client();c.force_login(User.objects.get(email='kim@connect.hku.hk'));self.assertEqual(c.get('/teams/new/').status_code,403)
-    def test_pages_render_both_languages(self):
-        u=make_user('pages');c=Client();c.force_login(u)
-        t=Team.objects.create(leader=u,university=University.objects.get(code='cityuhk'),kind='research',title='Pages',description='x');start_team(t)
-        g=GpaVerification.objects.create(user=u,university=t.university,value=3,scale=4,term='2026 Spring')
-        for language in ('en','zh'):
-            c.post('/language/',{'lang':language})
-            for url in ('/connect/','/teams/','/teams/?scope=all','/teams/new/',f'/teams/{t.pk}/',f'/teams/{t.pk}/edit/','/teams/people/',f'/people/{u.pk}/academic/','/profile/','/profile/academic/','/profile/gpa/',f'/profile/gpa/{g.pk}/submit/','/profile/social/','/profile/dating/',f'/messages/{t.thread.pk}/','/messages/','/rules/'):
-                self.assertEqual(c.get(url).status_code,200,(url,language))
-        self.assertEqual(Client().get('/connect/').status_code,200);self.assertEqual(Client().get(f'/teams/{t.pk}/').status_code,200)
-
 REPLY='草稿如下：\n```json\n{"title":"  入門單反相機  ","category":"weapons","description":"黑色相機，附鏡頭。","condition":"九成新","daily":"-5","extra":"ignored"}\n```'
 
 @override_settings(AI_API_KEY='test-key')
@@ -645,7 +331,7 @@ class ResendMail(TestCase):
     def test_login_link_sent_through_api(self):
         with mock.patch('market.mail.urlopen') as urlopen:
             r=Client().post('/login/',{'email':'amy@my.cityu.edu.hk'})
-        self.assertContains(r,'Check your inbox')
+        self.assertContains(r,'已建立登入郵件，請查收')
         req=urlopen.call_args.args[0];body=json.loads(req.data)
         self.assertEqual((req.full_url,req.get_header('Authorization')),('https://api.resend.com/emails','Bearer re_test'))
         self.assertEqual((body['to'],body['from']),(['amy@my.cityu.edu.hk'],'Box Box Share <onboarding@resend.dev>'))
@@ -653,10 +339,235 @@ class ResendMail(TestCase):
     def test_api_failure_reported_and_token_discarded(self):
         with mock.patch('market.mail.urlopen',side_effect=OSError('403')):
             r=Client().post('/login/',{'email':'amy@my.cityu.edu.hk'})
-        self.assertContains(r,'Email service unavailable')
+        self.assertContains(r,'郵件服務暫時無法使用')
         self.assertFalse(LoginToken.objects.exists())
 
 class SecurityHeaders(TestCase):
     def test_csp_and_permissions_policy(self):
         r=Client().get('/rules/')
         self.assertIn("script-src 'self'",r['Content-Security-Policy']);self.assertIn('camera=()',r['Permissions-Policy'])
+
+def soon(days=3): return (timezone.now()+timedelta(days=days)).replace(second=0,microsecond=0)
+def logged_in(user):
+    c=Client();c.force_login(user);return c
+
+class Buddy(TestCase):
+    def setUp(self):
+        self.host=make_user('hostess');self.ann=make_user('annie');self.bob=make_user('bobby');self.cat=make_user('cathy')
+        self.ch,self.ca,self.cb,self.cc=(logged_in(u) for u in (self.host,self.ann,self.bob,self.cat))
+        self.data={'category':'team','kind':'hackathon','title':'HK Hackathon 2026','description':'Need a frontend developer','starts':soon().strftime('%Y-%m-%dT%H:%M'),'location':'CityU AC1','capacity':'1','skills':'React','languages':'English, 廣東話'}
+    def new_post(self,**extra):
+        self.assertEqual(self.ch.post('/buddy/new/',{**self.data,**extra}).status_code,302)
+        return BuddyPost.objects.latest('pk')
+    def act(self,client,post,action,**data): return client.post(f'/buddy/{post.pk}/',{'action':action,**data})
+    def notes(self,user,url): return Notification.objects.filter(user=user,url=url).count()
+    def test_apply_withdraw_approve_capacity_and_close(self):
+        post=self.new_post();url=f'/buddy/{post.pk}/'
+        self.assertEqual((post.owner,post.capacity,post.state()),(self.host,1,'open'))
+        self.assertContains(Client().get('/buddy/'),'HK Hackathon 2026');self.assertContains(Client().get('/buddy/?category=team'),'HK Hackathon 2026')
+        self.assertNotContains(Client().get('/buddy/?category=buddy'),'HK Hackathon 2026')
+        self.act(self.ch,post,'apply');self.assertFalse(post.applications.exists())
+        self.act(self.ca,post,'apply',message='I build with React');self.act(self.ca,post,'apply',message='again')
+        self.assertEqual(post.applications.count(),1);self.assertEqual(self.notes(self.host,url),1)
+        self.act(self.cb,post,'apply')
+        a,b=post.applications.order_by('pk')
+        # Only the host manages applications; nobody reads a Buddy chat before being accepted.
+        for client in (self.ca,self.cc): self.assertEqual(self.act(client,post,'accept',application=b.pk).status_code,403)
+        self.assertEqual(self.act(self.ca,post,'close').status_code,403)
+        self.assertFalse(Thread.objects.filter(buddy=post).exists())
+        self.act(self.ch,post,'accept',application=a.pk)
+        a.refresh_from_db();self.assertEqual(a.status,'accepted');self.assertEqual(self.notes(self.ann,url),1)
+        thread=Thread.objects.get(buddy=post);self.assertEqual((thread.first,thread.second),(self.ann,self.host))
+        self.assertContains(self.ca.get(url),f'/messages/{thread.pk}/');self.assertContains(self.ch.get(url),f'/messages/{thread.pk}/')
+        self.assertEqual(self.cb.get(f'/messages/{thread.pk}/').status_code,403);self.assertEqual(self.cb.post(f'/messages/{thread.pk}/',{'text':'peek'}).status_code,403)
+        self.ca.post(f'/messages/{thread.pk}/',{'text':'See you at AC1'});self.assertEqual(thread.messages.count(),1)
+        self.assertNotContains(self.cb.get(url),'See you at AC1');self.assertNotContains(self.cb.get(url),f'/people/{self.ann.pk}/')
+        # Full: no more accepts, no new applications.
+        self.assertEqual(post.state(),'full');self.assertContains(self.ch.post(url,{'action':'accept','application':b.pk},follow=True),'名額已滿')
+        b.refresh_from_db();self.assertEqual(b.status,'pending')
+        self.act(self.cc,post,'apply');self.assertFalse(post.applications.filter(user=self.cat).exists())
+        self.assertContains(Client().get('/buddy/',{'state':'full'}),'HK Hackathon 2026');self.assertNotContains(Client().get('/buddy/',{'state':'open'}),'HK Hackathon 2026')
+        # Leaving frees the spot and closes the member's chat; history stays.
+        self.act(self.ca,post,'withdraw');a.refresh_from_db();self.assertEqual(a.status,'withdrawn');self.assertEqual(post.state(),'open')
+        self.assertEqual(Notification.objects.filter(user=self.host,url=url,text__contains='退出').count(),1)
+        self.ca.post(f'/messages/{thread.pk}/',{'text':'still here?'});self.assertEqual(thread.messages.count(),1)
+        self.assertContains(self.ca.get(f'/messages/{thread.pk}/'),'See you at AC1')
+        self.act(self.ca,post,'apply');a.refresh_from_db();self.assertEqual(a.status,'pending')
+        self.act(self.ch,post,'accept',application=b.pk);b.refresh_from_db();self.assertEqual(b.status,'accepted')
+        self.act(self.ch,post,'decline',application=a.pk);a.refresh_from_db();self.assertEqual(a.status,'declined')
+        self.act(self.ca,post,'apply');a.refresh_from_db();self.assertEqual(a.status,'declined')
+        BuddyPost.objects.filter(pk=post.pk).update(capacity=2)
+        self.act(self.cc,post,'apply');self.act(self.ch,post,'close')
+        post.refresh_from_db();self.assertEqual(post.state(),'closed');self.assertEqual(post.applications.get(user=self.cat).status,'declined')
+        self.assertEqual(post.applications.get(user=self.bob).status,'accepted')
+        self.assertNotContains(Client().get('/buddy/'),'HK Hackathon 2026');self.assertContains(Client().get('/buddy/',{'state':'closed'}),'HK Hackathon 2026')
+        self.act(self.ch,post,'reopen');post.refresh_from_db();self.assertEqual(post.state(),'open')
+        self.act(self.ch,post,'remove',application=b.pk);b.refresh_from_db();self.assertEqual(b.status,'removed')
+        self.assertEqual(self.cb.post(f'/report/buddy/{post.pk}/',{'reason':'Spam recruitment'}).status_code,302);self.assertEqual(Report.objects.get().kind,'buddy')
+    def test_form_rules_edit_and_filters(self):
+        r=self.ch.post('/buddy/new/',{**self.data,'category':'buddy','kind':'hackathon','starts':(timezone.now()-timedelta(hours=1)).strftime('%Y-%m-%dT%H:%M'),'ends':(timezone.now()-timedelta(hours=2)).strftime('%Y-%m-%dT%H:%M'),'capacity':'0'})
+        for text in ('類型與類別不符','開始時間須在未來','結束時間須晚於開始時間'): self.assertContains(r,text)
+        self.assertFalse(BuddyPost.objects.exists())
+        post=self.new_post(capacity='2');self.act(self.ca,post,'apply');self.act(self.ch,post,'accept',application=post.applications.get().pk)
+        self.act(self.cb,post,'apply');self.act(self.ch,post,'accept',application=post.applications.get(user=self.bob).pk)
+        self.assertContains(self.ch.post(f'/buddy/{post.pk}/edit/',{**self.data,'capacity':'1'}),'名額不能少於此數')
+        self.assertEqual(self.ch.post(f'/buddy/{post.pk}/edit/',{**self.data,'title':'Hackathon crew','capacity':'3'}).status_code,302)
+        post.refresh_from_db();self.assertEqual((post.title,post.capacity),('Hackathon crew',3))
+        self.assertEqual(self.ca.get(f'/buddy/{post.pk}/edit/').status_code,404);self.assertEqual(self.ca.post(f'/buddy/{post.pk}/edit/',self.data).status_code,404)
+        self.assertEqual(logged_in(make_user('unverified',False)).get('/buddy/new/').status_code,403);self.assertEqual(Client().get('/buddy/new/').status_code,302)
+        study=self.new_post(category='buddy',kind='study',title='Library revision',starts=soon(20).strftime('%Y-%m-%dT%H:%M'),location='Run Run Shaw Library')
+        page=lambda **q: Client().get('/buddy/',q).content.decode()
+        self.assertIn('Library revision',page(q='revision'));self.assertNotIn('Hackathon crew',page(q='revision'))
+        self.assertIn('Library revision',page(kind='study'));self.assertNotIn('Library revision',page(kind='hackathon'))
+        self.assertIn('Hackathon crew',page(when='week'));self.assertNotIn('Library revision',page(when='week'));self.assertIn('Library revision',page(when='month'))
+        BuddyPost.objects.filter(pk=study.pk).update(starts=timezone.now()-timedelta(days=1))
+        self.assertNotIn('Library revision',page());self.assertIn('Library revision',page(state='ended'))
+        self.act(self.cc,BuddyPost.objects.get(pk=study.pk),'apply');self.assertFalse(BuddyApplication.objects.filter(user=self.cat).exists())
+    def test_my_activity_keeps_orders_and_adds_buddy(self):
+        item=make_item(self.host);start=soon();order=apply(item.pk,self.ann,start,start+timedelta(days=1))
+        post=self.new_post(capacity='2');self.act(self.ca,post,'apply');other=self.new_post(title='Badminton',category='buddy',kind='sports')
+        self.act(self.ca,other,'apply');self.act(self.ch,other,'accept',application=other.applications.get().pk)
+        page=self.ca.get('/my/').content.decode()
+        for text in ('我的借出與借入訂單','我的借出物品','我的尋物','我發布的招募','我的申請','我已加入',f'/orders/{order.pk}/'): self.assertIn(text,page)
+        joined=page.split('我已加入')[1];self.assertIn('Badminton',joined);self.assertNotIn('HK Hackathon 2026',joined)
+        self.assertIn('HK Hackathon 2026',page.split('我的申請')[1].split('我已加入')[0])
+        self.assertNotIn('HK Hackathon 2026',page.split('我的借出與借入訂單')[1].split('我的借出物品')[0])
+        self.assertIn('待審 1',self.ch.get('/my/').content.decode())
+    def test_pages_render_in_all_languages_and_mobile_nav(self):
+        post=self.new_post();self.act(self.ca,post,'apply');self.act(self.ch,post,'accept',application=post.applications.get().pk)
+        thread=Thread.objects.get(buddy=post)
+        for lang in ('en','zh','hans'):
+            for client in (self.ch,self.ca):
+                client.post('/language/',{'lang':lang})
+                for url in ('/','/?tab=wanted','/impact/','/buddy/','/buddy/?category=buddy&state=all','/buddy/new/',f'/buddy/{post.pk}/','/my/','/messages/',f'/messages/{thread.pk}/','/profile/',f'/people/{self.host.pk}/','/rules/',f'/report/buddy/{post.pk}/'):
+                    self.assertEqual(client.get(url).status_code,200,(url,lang))
+            self.assertEqual(self.ch.get(f'/buddy/{post.pk}/edit/').status_code,200)
+        nav=self.ca.get('/').content.decode().split('<nav')[1].split('</nav>')[0]
+        order=[nav.index(f'href="{h}"') for h in ('/','/?tab=wanted','/impact/','/buddy/','/my/','/messages/')]
+        self.assertEqual(order,sorted(order))
+
+class BuddyRace(TransactionTestCase):
+    def test_simultaneous_accepts_never_exceed_capacity(self):
+        host=make_user('race-host');people=[make_user(f'racer{i}') for i in range(2)]
+        post=BuddyPost.objects.create(owner=host,category='buddy',kind='sports',title='Tennis',description='x',starts=soon(),location='Court',capacity=1)
+        apps=[BuddyApplication.objects.create(post=post,user=u) for u in people]
+        barrier=Barrier(2)
+        def accept(pk):
+            close_old_connections();barrier.wait()
+            try: social.decide(post.pk,User.objects.get(pk=host.pk),pk,True);return 'accepted'
+            except ValidationError: return 'full'
+            finally: close_old_connections()
+        with ThreadPoolExecutor(max_workers=2) as pool: results=list(pool.map(accept,[a.pk for a in apps]))
+        self.assertCountEqual(results,['accepted','full']);self.assertEqual(post.applications.filter(status='accepted').count(),1)
+
+class Friends(TestCase):
+    def setUp(self):
+        self.a=make_user('alice');self.b=make_user('brian');self.c=make_user('carol')
+        self.ca,self.cb,self.cc=(logged_in(u) for u in (self.a,self.b,self.c))
+    def act(self,client,user,action,**extra): return client.post(f'/people/{user.pk}/friend/',{'action':action,**extra})
+    def test_request_accept_chat_remove(self):
+        self.act(self.ca,self.b,'request');self.act(self.ca,self.b,'request')
+        self.assertEqual(Friendship.objects.get().status,'pending');self.assertEqual(Notification.objects.filter(user=self.b,text__contains='好友申請').count(),1)
+        inbox=self.cb.get('/messages/').content.decode();self.assertIn('好友申請',inbox);self.assertIn('alice',inbox)
+        self.assertEqual(self.act(self.ca,self.b,'chat').status_code,403)
+        self.act(self.cc,self.b,'accept');self.assertEqual(Friendship.objects.get().status,'pending')
+        self.act(self.cb,self.a,'accept');self.assertEqual(Friendship.objects.get().status,'accepted')
+        self.assertEqual(Notification.objects.filter(user=self.a,text__contains='已獲接受').count(),1)
+        self.assertContains(self.ca.get('/messages/'),f'/people/{self.b.pk}/')
+        r=self.act(self.ca,self.b,'chat');thread=Thread.objects.get(item=None,order=None,buddy=None)
+        self.assertRedirects(r,f'/messages/{thread.pk}/');self.assertEqual(self.act(self.cb,self.a,'chat').url,f'/messages/{thread.pk}/')
+        self.ca.post(f'/messages/{thread.pk}/',{'text':'Lunch?'});self.cb.post(f'/messages/{thread.pk}/',{'text':'Sure'})
+        self.assertEqual(thread.messages.count(),2)
+        for method in ('get','post'): self.assertEqual(getattr(self.cc,method)(f'/messages/{thread.pk}/',{'text':'hi'} if method=='post' else None).status_code,403)
+        self.assertContains(self.cb.get('/messages/'),f'/messages/{thread.pk}/')
+        self.act(self.cb,self.a,'remove',next='/messages/#friends');self.assertFalse(Friendship.objects.exists())
+        self.ca.post(f'/messages/{thread.pk}/',{'text':'?'});self.assertEqual(thread.messages.count(),2)
+        self.assertContains(self.ca.get(f'/messages/{thread.pk}/'),'Lunch?')
+    def test_decline_cancel_crossing_and_no_automatic_friends(self):
+        self.act(self.ca,self.b,'request');self.act(self.cb,self.a,'decline')
+        self.assertEqual(Friendship.objects.get().status,'declined');self.assertContains(self.ca.get(f'/people/{self.b.pk}/'),'對方暫未接受')
+        self.act(self.ca,self.b,'request');self.assertEqual(Notification.objects.filter(user=self.b,text__contains='好友申請').count(),1)
+        self.act(self.cb,self.a,'request');f=Friendship.objects.get();self.assertEqual((f.sender,f.status),(self.b,'pending'))
+        self.act(self.cb,self.a,'cancel');self.assertFalse(Friendship.objects.exists())
+        self.act(self.ca,self.c,'request');self.act(self.cc,self.a,'request');self.assertEqual(Friendship.objects.get().status,'accepted')
+        self.act(self.ca,self.a,'request');self.assertEqual(Friendship.objects.filter(sender=self.a,recipient=self.a).count(),0)
+        # Finishing a borrow or a Buddy activity together never makes anyone friends.
+        item=make_item(self.b);start=soon();o=apply(item.pk,self.a,start,start+timedelta(days=1))
+        for actor,action in ((self.b,'accept'),(self.b,'handover'),(self.a,'handover'),(self.a,'return'),(self.b,'return')): act(o.pk,actor,action)
+        post=BuddyPost.objects.create(owner=self.b,category='buddy',kind='meal',title='Dinner',description='x',starts=soon(),location='Canteen',capacity=2)
+        social.apply(post.pk,self.a,'');social.decide(post.pk,self.b,post.applications.get().pk,True)
+        self.assertFalse(social.are_friends(self.a,self.b));self.assertFalse(Friendship.objects.filter(sender__in=[self.a,self.b],recipient__in=[self.a,self.b]).exists())
+    def test_public_page_privacy(self):
+        Profile.objects.filter(user=self.b).update(bio='Year 2 EE',skills='Python',languages='English')
+        anon=Client().get(f'/people/{self.b.pk}/').content.decode()
+        self.assertNotIn('Year 2 EE',anon);self.assertNotIn(self.b.email,anon);self.assertNotIn('加好友',anon)
+        page=self.ca.get(f'/people/{self.b.pk}/').content.decode()
+        self.assertIn('Year 2 EE',page);self.assertIn('加好友',page);self.assertNotIn(self.b.email,page)
+
+@override_settings(STORAGES=DB_STORAGE)
+class ProfilePage(TestCase):
+    def test_profile_opens_after_avatar_upload_and_saves_buddy_fields(self):
+        # Regression: with MEDIA_STORAGE=db (Render), /profile/ crashed once an avatar existed.
+        u=make_user('avatar');c=logged_in(u)
+        self.assertEqual(c.get('/profile/').status_code,200)
+        r=c.post('/profile/',{'nickname':'Ava','avatar':photo(),'bio':'Likes hiking','interests':'行山','skills':'Figma','languages':'English, 普通話'})
+        self.assertEqual(r.status_code,302);p=Profile.objects.get(user=u);self.assertTrue(p.avatar)
+        self.assertTrue(StoredFile.objects.filter(name=p.avatar.name).exists())
+        page=c.get('/profile/');self.assertEqual(page.status_code,200);self.assertContains(page,f'/media/avatar/{u.pk}/');self.assertNotContains(page,u.email)
+        self.assertEqual((p.nickname,p.bio,p.languages),('Ava','Likes hiking','English, 普通話'))
+        old=p.avatar.name
+        with self.captureOnCommitCallbacks(execute=True): c.post('/profile/',{'nickname':'Ava','remove_avatar':'on'})
+        p.refresh_from_db();self.assertFalse(p.avatar);self.assertFalse(StoredFile.objects.filter(name=old).exists())
+        self.assertEqual(c.get('/profile/').status_code,200)
+
+class Languages(TestCase):
+    def setUp(self): self.u=make_user('linguist');self.c=logged_in(self.u)
+    def test_three_languages_menu_cookie_and_return_to_same_page(self):
+        r=self.c.get('/');self.assertContains(r,'lang="zh-Hant"');self.assertContains(r,'尋物廣場')
+        for code,label in i18n.LANGUAGES: self.assertContains(r,f'value="{code}"')
+        r=self.c.post('/language/',{'lang':'hans','next':'/buddy/?category=team&q=AI'})
+        self.assertRedirects(r,'/buddy/?category=team&q=AI',fetch_redirect_response=False)
+        page=self.c.get('/buddy/?category=team&q=AI');self.assertContains(page,'lang="zh-Hans"');self.assertContains(page,'寻物广场');self.assertContains(page,'消息');self.assertContains(page,'value="AI"')
+        self.assertRedirects(self.c.post('/language/',{'lang':'en','next':'https://evil.example/'}),'/',fetch_redirect_response=False)
+        page=self.c.get('/');self.assertContains(page,'lang="en"');self.assertContains(page,'Seeking');self.assertContains(page,'Buddy')
+        # The choice survives signing out (the session is flushed; the cookie stays).
+        self.c.post('/language/',{'lang':'hans'});self.c.post('/logout/')
+        self.assertContains(self.c.get('/'),'lang="zh-Hans"')
+    def test_messages_errors_notifications_translated_but_user_text_untouched(self):
+        BuddyPost.objects.create(owner=make_user('poster'),category='buddy',kind='study',title='溫書搭子 國際',description='一起溫書',starts=soon(),location='圖書館',capacity=2)
+        self.c.post('/language/',{'lang':'hans'})
+        page=self.c.get('/buddy/').content.decode();self.assertIn('溫書搭子 國際',page);self.assertIn('学习',page)
+        r=self.c.post('/buddy/new/',{'category':'buddy','kind':'study','title':'x','description':'x','starts':'2000-01-01T10:00','location':'x','capacity':'1'})
+        self.assertContains(r,'开始时间须在未来');self.assertNotContains(r,'Must be in the future')
+        other=make_user('friendly');logged_in(other).post(f'/people/{self.u.pk}/friend/',{'action':'request'})
+        self.assertContains(self.c.get('/messages/'),'收到好友申请')
+        self.c.post('/language/',{'lang':'en'})
+        inbox=self.c.get('/messages/');self.assertContains(inbox,'New friend request');self.assertNotContains(inbox,'收到好友申請')
+        r=self.c.post('/buddy/new/',{'category':'buddy','kind':'study','title':'x','description':'x','starts':'2000-01-01T10:00','location':'x','capacity':'1'})
+        self.assertContains(r,'Must be in the future');self.assertContains(r,'People needed (not counting you)')
+    def test_pick_rules(self):
+        for lang,want in (('en','Pending'),('zh','待確認'),('hans','待确认')): self.assertEqual(i18n.loc('待確認 / Pending',lang),want)
+        self.assertEqual(i18n.loc('Too many requests. Try later / 請稍後再試','en'),'Too many requests. Try later')
+        self.assertEqual(i18n.loc('A / 甲; B / 乙','zh'),'甲; 乙');self.assertEqual(i18n.loc('Hackathon','hans'),'Hackathon')
+        self.assertEqual(i18n.loc('物品 / Item',None),'物品 / Item')
+
+class MigrationKeepsData(TransactionTestCase):
+    def test_0005_preserves_users_items_orders_and_messages(self):
+        executor=MigrationExecutor(connection)
+        old=[('market','0004_stored_file')];new=[('market','0005_buddy_friends_profile')]
+        executor.migrate(old);apps=executor.loader.project_state(old).apps
+        U=apps.get_model('auth','User');P=apps.get_model('market','Profile');I=apps.get_model('market','Item');O=apps.get_model('market','Order');T=apps.get_model('market','Thread');M=apps.get_model('market','Message')
+        lender=U.objects.create(username='old@my.cityu.edu.hk',email='old@my.cityu.edu.hk');borrower=U.objects.create(username='b@my.cityu.edu.hk',email='b@my.cityu.edu.hk')
+        P.objects.create(user=lender,nickname='Old lender',verified=True);P.objects.create(user=borrower,nickname='Old borrower',verified=True)
+        now=timezone.now();item=I.objects.create(owner=lender,title='Old camera',category='tech',description='x',condition='ok',daily=5,deposit=0,available_start=now,available_end=now+timedelta(days=9),location='AC1')
+        order=O.objects.create(item=item,borrower=borrower,start=now+timedelta(days=1),end=now+timedelta(days=2),status='completed',rent=5,deposit=0,snapshot={'title':'Old camera'})
+        t1=T.objects.create(item=item,first=borrower,second=lender);t2=T.objects.create(order=order,first=borrower,second=lender)
+        M.objects.create(thread=t1,sender=borrower,text='Is it free?');M.objects.create(thread=t2,sender=lender,text='Returned, thanks')
+        executor=MigrationExecutor(connection);executor.migrate(new)
+        self.assertEqual(Profile.objects.get(user__username='old@my.cityu.edu.hk').nickname,'Old lender')
+        self.assertEqual((Item.objects.get().title,Order.objects.get().status,Order.objects.get().snapshot),('Old camera','completed',{'title':'Old camera'}))
+        self.assertEqual(sorted(Message.objects.values_list('text',flat=True)),['Is it free?','Returned, thanks'])
+        self.assertEqual(Thread.objects.filter(buddy__isnull=True).count(),2);self.assertEqual(Profile.objects.filter(bio='').count(),2)
+        c=Client();c.force_login(User.objects.get(username='b@my.cityu.edu.hk'))
+        inbox=c.get('/messages/');self.assertContains(inbox,'Old camera');self.assertEqual(c.get(f'/messages/{t1.pk}/').status_code,200)
+

@@ -3,3 +3,5 @@ Pillow>=11.3,<12
 gunicorn>=23,<24
 psycopg[binary]>=3.2,<3.3
 whitenoise>=6.9,<7
+# Simplified Chinese interface text, converted from the Traditional strings.
+opencc-python-reimplemented>=0.1.7,<0.2

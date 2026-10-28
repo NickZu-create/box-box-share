@@ -1,17 +1,34 @@
-import re
 from django import forms
+from django.db import transaction
+from django.forms.utils import ErrorList
 from django.utils import timezone
 from .models import *
 from .services import interval, clean_image
-LABELS = {'title':'物品名稱 / Title','category':'分類 / Category','description':'描述 / Description','condition':'物品狀況 / Condition','daily':'每日租金 HKD / Daily rent','deposit':'押金 HKD / Deposit','available_start':'可借開始 / Available from','available_end':'可借結束 / Available until','max_days':'最長借用天數 / Maximum days','location':'交接地點 / Meet-up location','status':'物品狀態 / Listing status','start':'開始時間 / Start','end':'結束時間 / End','budget':'總預算 HKD / Total budget','active':'公開尋物 / Active request','nickname':'暱稱 / Nickname','avatar':'頭像 / Avatar','bio':'自我介紹 / About me','interests':'興趣標籤，以逗號分隔 / Interests, comma separated','social':'開放交友：願意透過借物和搭子活動認識新朋友 / Open to new friends','dating':'開放心動配對（須年滿 18 歲） / Open to dating (18+)','kind':'類型 / Type','major':'主修 / Major','year':'年級 / Year','areas':'興趣領域 / Areas of interest','skills':'技能，以逗號分隔 / Skills, comma separated','courses':'正在找隊友的課程編號（選填） / Course codes you need teammates for (optional)','projects':'曾參與的項目 / Past projects','link':'作品或 GitHub 連結 / Portfolio or GitHub link','public':'公開學術資料（只限已登入的學生查看） / Show my academic profile to signed-in students','cross_school':'接受跨校合作 / Open to other universities','course_code':'課程編號（選填，例如 EE1001） / Course code (optional, e.g. EE1001)','size':'招募人數（不含隊長） / People to recruit (excluding you)','duration':'預計工作周期 / Expected duration','deadline':'項目截止日期 / Project deadline','mode':'合作方式 / Mode','university':'學校 / University','value':'GPA','scale':'滿分制 / Scale (e.g. 4.30)','term':'成績所屬學期 / Term (e.g. 2026 Spring)','visibility':'公開方式 / Visibility','when':'活動時間 / When','item':'可借出的物品（選填） / An item you can lend (optional)','spots':'名額 / Spots'}
-class DatesMixin:
-    def setup(self):
+from .i18n import loc
+LABELS = {'title':'物品名稱 / Title','category':'分類 / Category','description':'描述 / Description','condition':'物品狀況 / Condition','daily':'每日租金 HKD / Daily rent','deposit':'押金 HKD / Deposit','available_start':'可借開始 / Available from','available_end':'可借結束 / Available until','max_days':'最長借用天數 / Maximum days','location':'交接地點 / Meet-up location','status':'物品狀態 / Listing status','start':'開始時間 / Start','end':'結束時間 / End','budget':'總預算 HKD / Total budget','active':'公開尋物 / Active request','nickname':'暱稱 / Nickname','avatar':'頭像 / Avatar','bio':'自我介紹 / About me','interests':'興趣 / Interests','skills':'技能 / Skills','languages':'交流語言 / Languages'}
+# Form text is written "繁中 / English"; these show it in the visitor's language, including validation errors.
+class LocErrorList(ErrorList):
+    def __getitem__(self,i): return loc(super().__getitem__(i))
+def localize(form):
+    for field in form.fields.values():
+        field.label=loc(field.label)
+        field.help_text=loc(field.help_text)
+        if 'placeholder' in field.widget.attrs: field.widget.attrs['placeholder']=loc(field.widget.attrs['placeholder'])
+        if isinstance(field,forms.ChoiceField) and not isinstance(field,forms.ModelChoiceField):
+            field.choices=[(loc(k),[(kk,loc(vv)) for kk,vv in v]) if isinstance(v,(list,tuple)) else (k,loc(v)) for k,v in field.choices]
+class Localized:
+    def __init__(self,*a,**kw):
+        kw.setdefault('error_class',LocErrorList)
+        super().__init__(*a,**kw)
+class DatesMixin(Localized):
+    def setup(self,labels=LABELS):
         for name,field in self.fields.items():
-            field.label=LABELS.get(name,field.label)
+            field.label=labels.get(name,field.label)
             if isinstance(field,forms.DateTimeField):
                 field.widget=forms.DateTimeInput(format='%Y-%m-%dT%H:%M',attrs={'type':'datetime-local'})
                 field.input_formats=['%Y-%m-%dT%H:%M']
             if isinstance(field,forms.CharField) and isinstance(field.widget,forms.Textarea): field.widget.attrs['rows']=4
+        localize(self)
     def clean(self):
         d=super().clean()
         start=d.get('start',d.get('available_start')); end=d.get('end',d.get('available_end'))
@@ -43,84 +60,51 @@ class BookingForm(DatesMixin,forms.Form):
     start=forms.DateTimeField()
     end=forms.DateTimeField()
     def __init__(self,*a,**kw): super().__init__(*a,**kw); self.setup()
-class BuddyForm(DatesMixin,forms.ModelForm):
-    class Meta:
-        model=Buddy
-        fields=['kind','title','description','when','location','item','spots','active']
-    def __init__(self,user,*a,**kw):
-        super().__init__(*a,**kw); self.setup()
-        self.fields['item'].queryset=Item.objects.filter(owner=user,status='listed')
-        self.fields['active'].label='公開招募 / Open for joining'
-        self.fields['description'].widget.attrs['placeholder']='想做什麼、適合誰、需要帶什麼 / What, who it suits, what to bring'
-    def clean_when(self):
-        when=self.cleaned_data['when']
-        if 'when' in self.changed_data and when<=timezone.now(): raise forms.ValidationError('活動時間須在未來 / Must be in the future')
-        return when
-# Settings are split by module so academic, social and dating data are edited (and shared) separately.
-class ProfileForm(forms.ModelForm):
+class ProfileForm(Localized,forms.ModelForm):
+    remove_avatar=forms.BooleanField(required=False,label='移除目前頭像 / Remove current avatar')
     class Meta:
         model=Profile
-        fields=['nickname','avatar']
+        fields=['nickname','avatar','bio','interests','skills','languages']
         labels=LABELS
+        # A plain file input. Django's default widget links to the current file's public URL, but photos are
+        # private: DatabaseStorage (MEDIA_STORAGE=db, used on Render) has no public URL and raised, so
+        # /profile/ returned a server error for every account that had uploaded an avatar.
+        widgets={'avatar':forms.FileInput(attrs={'accept':'image/jpeg,image/png,image/webp'}),'bio':forms.Textarea(attrs={'rows':3})}
+        help_texts={'bio':'只向已登入的成員顯示，例如主修、想認識怎樣的搭子。 / Shown to signed-in members only, e.g. your major or the buddies you hope to meet.','interests':'以逗號分隔 / Comma separated','skills':'以逗號分隔，例如 Python, 攝影 / Comma separated, e.g. Python, photography','languages':'例如 廣東話, English, 普通話 / e.g. Cantonese, English, Mandarin'}
+    def __init__(self,*a,**kw):
+        super().__init__(*a,**kw)
+        if not self.instance.avatar: self.fields.pop('remove_avatar')
+        localize(self)
     def clean_avatar(self):
         avatar=self.cleaned_data.get('avatar')
         return clean_image(avatar) if hasattr(avatar,'content_type') else avatar
-class SocialForm(forms.ModelForm):
+    def save(self,commit=True):
+        old=Profile.objects.filter(pk=self.instance.pk).values_list('avatar',flat=True).first()
+        profile=super().save(commit=False)
+        if self.cleaned_data.get('remove_avatar') and 'avatar' not in self.files: profile.avatar=''
+        if commit: profile.save()
+        if old and old!=profile.avatar.name:
+            storage=profile.avatar.storage
+            transaction.on_commit(lambda: storage.delete(old))
+        return profile
+BUDDY_LABELS={'category':'類別 / Category','kind':'類型 / Type','title':'標題 / Title','description':'描述 / Description','starts':'開始時間 / Starts','ends':'結束時間（選填） / Ends (optional)','location':'地點 / Place','capacity':'所需人數（不含發起人） / People needed (not counting you)','skills':'技能要求（選填） / Skills wanted (optional)','languages':'交流語言（選填） / Languages (optional)'}
+class BuddyForm(DatesMixin,forms.ModelForm):
     class Meta:
-        model=Profile
-        fields=['bio','interests','social']
-        labels=LABELS
-        widgets={'bio':forms.Textarea(attrs={'rows':3})}
-class DatingForm(forms.ModelForm):
-    adult=forms.BooleanField(required=False,label='我確認已年滿 18 歲 / I confirm I am 18 or older')
-    class Meta:
-        model=Profile
-        fields=['dating']
-        labels=LABELS
-    def __init__(self,*a,**kw):
+        model=BuddyPost
+        fields=['category','kind','title','description','starts','ends','location','capacity','skills','languages']
+        help_texts={'capacity':'名額不含你這位發起人。例如需要 3 位隊友就填 3。 / Spots do not include you, the host. Need 3 teammates? Enter 3.','ends':'不填則以開始時間計算是否已結束。 / Leave empty and the post ends at its start time.','location':'可填校園地點或「線上」 / A campus location, or “Online”'}
+    def __init__(self,*a,joined=0,**kw):
         super().__init__(*a,**kw)
-        self.fields['adult'].initial=self.instance.dating
-        self.fields['dating'].help_text='預設關閉。心動是秘密的：只有雙方都對彼此心動才會通知。關閉後會撤回你送出的心動。 / Off by default. Crushes stay secret unless mutual. Turning this off withdraws the crushes you sent.'
+        self.joined=joined
+        names=dict(BUDDY_KINDS)
+        self.fields['kind'].choices=[('',  '---------')]+[(label,[(k,names[k]) for k in KINDS_BY_CATEGORY[key]]) for key,label in BUDDY_CATEGORIES]
+        self.fields['capacity'].widget.attrs.update(min=1,max=50)
+        self.setup(BUDDY_LABELS)
     def clean(self):
         d=super().clean()
-        if d.get('dating') and not d.get('adult'): self.add_error('adult','開放心動配對須確認年滿 18 歲 / Confirm you are 18 or older to turn on dating')
-        return d
-class AcademicForm(forms.ModelForm):
-    kinds=forms.MultipleChoiceField(choices=TEAM_KINDS,required=False,widget=forms.CheckboxSelectMultiple,label='想參與的項目類型 / Project types you want')
-    class Meta:
-        model=AcademicProfile
-        fields=['major','year','areas','skills','courses','kinds','projects','link','public','cross_school']
-        labels=LABELS
-        widgets={'projects':forms.Textarea(attrs={'rows':4})}
-    def __init__(self,*a,**kw):
-        super().__init__(*a,**kw)
-        self.initial['kinds']=[k for k in self.instance.kinds.split(',') if k]
-        self.fields['link'].help_text='請勿填寫電話、電郵或其他聯絡方式。 / Do not add phone numbers, emails or other contact details.'
-    def clean_kinds(self): return ','.join(self.cleaned_data['kinds'])
-    def clean_courses(self): return ', '.join(re.sub(r'\s+','',code).upper() for code in split_tags(self.cleaned_data['courses'],12))
-class TeamForm(forms.ModelForm):
-    class Meta:
-        model=Team
-        fields=['kind','course_code','title','description','size','skills','duration','deadline','mode','cross_school']
-        labels={**LABELS,'title':'項目名稱 / Project name','skills':'需要的技能，以逗號分隔 / Skills needed, comma separated'}
-        widgets={'deadline':forms.DateInput(attrs={'type':'date'},format='%Y-%m-%d'),'description':forms.Textarea(attrs={'rows':5,'placeholder':'目標、分工、每週投入時間 / Goal, roles, weekly time commitment'})}
-    def clean_course_code(self):
-        code=re.sub(r'\s+','',self.cleaned_data['course_code']).upper()
-        if code and not re.fullmatch(r'[A-Z0-9-]{2,20}',code): raise forms.ValidationError('例如 EE1001 / For example EE1001')
-        return code
-    def clean_deadline(self):
-        deadline=self.cleaned_data['deadline']
-        if deadline and 'deadline' in self.changed_data and deadline<timezone.localdate(): raise forms.ValidationError('截止日期已過 / Deadline has passed')
-        return deadline
-class GpaForm(forms.ModelForm):
-    class Meta:
-        model=GpaVerification
-        fields=['university','value','scale','term']
-        labels=LABELS
-    def __init__(self,*a,**kw):
-        super().__init__(*a,**kw)
-        self.fields['university'].queryset=University.objects.filter(enabled=True)
-    def clean(self):
-        d=super().clean()
-        if d.get('value') is not None and d.get('scale') and d['value']>d['scale']: self.add_error('value','GPA 不可高於滿分 / GPA cannot exceed the scale')
+        category,kind,starts,ends=d.get('category'),d.get('kind'),d.get('starts'),d.get('ends')
+        if category and kind and kind not in KINDS_BY_CATEGORY[category]: self.add_error('kind','類型與類別不符 / This type does not belong to the chosen category')
+        if starts and ('starts' in self.changed_data or not self.instance.pk) and starts<=timezone.now(): self.add_error('starts','開始時間須在未來 / Must be in the future')
+        if starts and ends and ends<=starts: self.add_error('ends','結束時間須晚於開始時間 / Must be after the start')
+        if d.get('capacity') and d['capacity']<self.joined: self.add_error('capacity',f'已有 {self.joined} 人加入，名額不能少於此數 / {self.joined} people have already joined; spots cannot be fewer')
         return d

@@ -1,6 +1,7 @@
 asgiref==3.12.1
 django==5.2.18
 gunicorn==23.0.0
+opencc-python-reimplemented==0.1.7
 packaging==26.3
 pillow==11.3.0
 psycopg-binary==3.2.13

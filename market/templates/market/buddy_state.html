@@ -1,0 +1,1 @@
+<span class="status buddy-{{ state }}">{% if state == 'open' %}{% tr '招募中' 'Recruiting' %}{% elif state == 'full' %}{% tr '已滿' 'Full' %}{% elif state == 'closed' %}{% tr '已關閉' 'Closed' %}{% else %}{% tr '已結束' 'Ended' %}{% endif %}</span>

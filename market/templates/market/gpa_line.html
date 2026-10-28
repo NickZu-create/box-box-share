@@ -1,1 +1,0 @@
-<p class="gpa-line">GPA {% if gpa.visibility == 'band' %}{{ gpa.band }}{% else %}{{ gpa.value }}{% endif %} / {{ gpa.scale }} · ✓ {% tr '平台已審核' 'Platform reviewed' %} · {% tr '截至' 'As of' %} {{ gpa.term }}<small>{{ gpa.university.name }} · {% tr '由平台審核員人工核對，並非大學官方認證' 'Checked by a platform reviewer; not official university certification' %}</small></p>

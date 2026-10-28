@@ -1,4 +1,5 @@
 import hashlib
+from datetime import timedelta
 from decimal import Decimal, InvalidOperation
 from django.conf import settings
 from django.core import signing
@@ -7,7 +8,9 @@ from django.contrib.auth import login, logout
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError, PermissionDenied
 from django.db import transaction
-from django.db.models import Q, Avg, Count
+from django.db.models import Q, Avg, Count, F, Value
+from django.db.models.functions import Coalesce
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.http import FileResponse, Http404, HttpResponse, JsonResponse
 from django.shortcuts import render, redirect, get_object_or_404
 from django.urls import reverse
@@ -17,9 +20,12 @@ from .models import *
 from .forms import *
 from .services import *
 from .impact import impact_summary, METHOD_URL
-from . import ai, teamup
+from . import ai, social, i18n
 
-def error(request,exc): messages.error(request,'; '.join(exc.messages))
+def error(request,exc): messages.error(request,'; '.join(str(m) for m in exc.messages))
+def safe_next(request,fallback='/'):
+    target=request.POST.get('next') or request.GET.get('next') or ''
+    return target if url_has_allowed_host_and_scheme(target,allowed_hosts={request.get_host()},require_https=request.is_secure()) else fallback
 def home(request):
     tab=request.GET.get('tab','items'); q=request.GET.get('q','').strip(); category=request.GET.get('category','')
     wanted=tab=='wanted'
@@ -66,8 +72,13 @@ def verify(request,raw):
 def signout(request): logout(request); return redirect('home')
 @require_POST
 def language(request):
-    request.session['lang']='en' if request.POST.get('lang')=='en' else 'zh'
-    return redirect('home')
+    # Back to the same page (query string and all); lang.js restores unsent form text and scroll position.
+    lang=request.POST.get('lang')
+    if lang not in i18n.CODES: lang='zh'
+    request.session['lang']=lang
+    response=redirect(safe_next(request))
+    response.set_cookie(i18n.COOKIE,lang,max_age=365*86400,samesite='Lax',secure=request.is_secure(),httponly=True)
+    return response
 
 @member
 def item_edit(request,pk=None):
@@ -122,8 +133,7 @@ def item_detail(request,pk):
                     if expected['item']!=item.pk or expected['start']!=payload['start'] or expected['end']!=payload['end']: raise ValidationError('Dates changed. Check price again / 日期已更改，請重新計算費用')
                     o=apply(item.pk,request.user,form.cleaned_data['start'],form.cleaned_data['end'],expected=expected); return redirect('order',pk=o.pk)
             except ValidationError as exc: form.add_error(None,exc)
-    buddies=Buddy.objects.filter(item=item,active=True,when__gt=timezone.now()).order_by('when')
-    return render(request,'market/item.html',{'item':item,'form':form,'quote':quote,'quote_token':quote_token,'buddies':buddies})
+    return render(request,'market/item.html',{'item':item,'form':form,'quote':quote,'quote_token':quote_token})
 
 @member
 def wanted_edit(request,pk=None):
@@ -154,7 +164,11 @@ def wanted_detail(request,pk):
 @member
 def dashboard(request):
     orders=Order.objects.filter(Q(borrower=request.user)|Q(item__owner=request.user)).select_related('item','borrower__profile','item__owner__profile').order_by('-created')
-    return render(request,'market/dashboard.html',{'orders':orders,'items':Item.objects.filter(owner=request.user),'wanted_rows':Wanted.objects.filter(owner=request.user)})
+    # Buddy stays in its own section; it never mixes with lending and borrowing orders.
+    posts=BuddyPost.objects.filter(owner=request.user).annotate(joined_count=Count('applications',filter=Q(applications__status='accepted')),pending_count=Count('applications',filter=Q(applications__status='pending'))).order_by('-created')
+    applications=BuddyApplication.objects.filter(user=request.user).select_related('post').order_by('-created')
+    return render(request,'market/dashboard.html',{'orders':orders,'items':Item.objects.filter(owner=request.user),'wanted_rows':Wanted.objects.filter(owner=request.user),
+        'buddy_posts':[(p,p.state(p.joined_count)) for p in posts],'buddy_applications':[a for a in applications if a.status!='accepted'],'buddy_joined':[a for a in applications if a.status=='accepted']})
 
 @member
 def order_detail(request,pk):
@@ -204,136 +218,143 @@ def survey(request,pk):
 
 @member
 def inbox(request):
-    threads=Thread.objects.filter(Q(first=request.user)|Q(second=request.user)|Q(team__members__user=request.user)).distinct().select_related('item','order__item','buddy','team','first__profile','second__profile')
-    notifications=Notification.objects.filter(user=request.user).order_by('-created')[:100]
-    if request.method=='POST': Notification.objects.filter(user=request.user).update(read=True); return redirect('inbox')
-    return render(request,'market/inbox.html',{'threads':threads,'notifications':notifications})
+    me=request.user
+    threads=Thread.objects.filter(Q(first=me)|Q(second=me)).select_related('item','order__item','buddy','first__profile','second__profile').order_by('-pk')
+    notifications=Notification.objects.filter(user=me).order_by('-created')[:100]
+    if request.method=='POST': Notification.objects.filter(user=me).update(read=True); return redirect('inbox')
+    friendships=Friendship.objects.filter(Q(sender=me)|Q(recipient=me)).select_related('sender__profile','recipient__profile').order_by('-created')
+    friends=[(f,f.recipient if f.sender_id==me.pk else f.sender) for f in friendships if f.status=='accepted']
+    return render(request,'market/inbox.html',{'threads':threads,'notifications':notifications,'friends':friends,
+        'incoming':[f for f in friendships if f.status=='pending' and f.recipient_id==me.pk],'outgoing':[f for f in friendships if f.status=='pending' and f.sender_id==me.pk]})
 
 @member
 @require_POST
 def contact(request,pk):
     item=get_object_or_404(Item,pk=pk,status='listed',owner__profile__restricted=False)
-    if item.owner_id==request.user.pk or blocked(request.user,item.owner): raise PermissionDenied()
+    if item.owner_id==request.user.pk: raise PermissionDenied()
     thread,_=Thread.objects.get_or_create(item=item,first=request.user,second=item.owner,order=None)
     return redirect('thread',pk=thread.pk)
 
 @member
 def chat(request,pk):
-    thread=get_object_or_404(Thread.objects.select_related('first__profile','second__profile','item','order__item','buddy','team'),pk=pk)
-    if not in_thread(thread,request.user): raise PermissionDenied()
+    thread=get_object_or_404(Thread.objects.select_related('first__profile','second__profile','item','order__item','buddy'),pk=pk)
+    if request.user.pk not in (thread.first_id,thread.second_id): raise PermissionDenied()
+    open_=social.can_message(thread,request.user)
     if request.method=='POST':
         text=request.POST.get('text','').strip()
         try:
-            if not can_message(thread,request.user): raise ValidationError('This conversation is closed / 此對話已關閉')
+            if not open_: raise ValidationError('此對話已關閉 / This conversation is closed')
             throttle('message:'+str(request.user.pk),30,60)
             if not text or len(text)>2000: raise ValidationError('1–2000 characters / 請輸入 1–2000 字')
             Message.objects.create(thread=thread,sender=request.user,text=text)
-            if thread.team_id:
-                for m in thread.team.members.exclude(user=request.user).select_related('user'): notify_once(m.user,'小組有新訊息 / New team message',f'/messages/{thread.pk}/')
-            else:
-                other=thread.second if thread.first_id==request.user.pk else thread.first
-                notify(other,'收到新訊息 / New message',f'/messages/{thread.pk}/')
+            other=thread.second if thread.first_id==request.user.pk else thread.first
+            # One unread notification per conversation, however many messages arrive.
+            if not Notification.objects.filter(user=other,url=f'/messages/{thread.pk}/',read=False).exists(): notify(other,'收到新訊息 / New message',f'/messages/{thread.pk}/')
         except ValidationError as exc: error(request,exc)
         return redirect('thread',pk=pk)
-    return render(request,'market/chat.html',{'thread':thread,'open':can_message(thread,request.user),'chat_messages':list(reversed(thread.messages.select_related('sender__profile').order_by('-created','-pk')[:300]))})
+    return render(request,'market/chat.html',{'thread':thread,'open':open_,'other':thread.second if thread.first_id==request.user.pk else thread.first,'chat_messages':list(reversed(thread.messages.select_related('sender__profile').order_by('-created','-pk')[:300]))})
 
 @member
 def profile_edit(request):
-    form=ProfileForm(request.POST or None,request.FILES or None,instance=request.user.profile)
-    if request.method=='POST' and form.is_valid(): form.save(); return redirect('person',pk=request.user.pk)
-    return render(request,'market/settings.html',{'form':form,'section':'basic','title':'基本資料 / Basic profile'})
+    form=ProfileForm(request.POST if request.method=='POST' else None,request.FILES or None,instance=request.user.profile)
+    if request.method=='POST' and form.is_valid():
+        form.save(); messages.success(request,'個人資料已儲存 / Profile saved'); return redirect('profile')
+    return render(request,'market/profile.html',{'form':form,'profile':request.user.profile})
 
 def person(request,pk):
     person=get_object_or_404(Profile.objects.select_related('user'),user_id=pk,restricted=False)
     reviews=Review.objects.filter(recipient_id=pk).select_related('author__profile').order_by('-created')
-    context={'person':person,'reviews':reviews,'average':reviews.aggregate(a=Avg('rating'))['a'],'buddies':Buddy.objects.filter(owner_id=pk,active=True,when__gt=timezone.now()).order_by('when')[:6]}
     me=request.user
-    if me.is_authenticated and me.pk==pk: context['academic_visible']=True
-    if me.is_authenticated and me.pk!=pk and hasattr(me,'profile'):
-        sent=set(Connection.objects.filter(sender=me,recipient_id=pk).values_list('kind',flat=True))
-        received=set(Connection.objects.filter(sender_id=pk,recipient=me).values_list('kind',flat=True))
-        context.update(social_panel=True,academic_visible=teamup.can_view_academic(me,person.user),met=pk in met_ids(me),i_blocked=Block.objects.filter(blocker=me,blocked_id=pk).exists(),blocked=blocked(me,person.user),sent=sent,friends='friend' in sent&received,asked_me='friend' in received-sent,matched='crush' in sent&received)
-    return render(request,'market/person.html',context)
+    member=me.is_authenticated and hasattr(me,'profile') and me.profile.verified
+    posts=BuddyPost.objects.filter(owner_id=pk,status='open').annotate(finish_at=Coalesce('ends','starts')).filter(finish_at__gt=timezone.now()).order_by('starts')[:6]
+    return render(request,'market/person.html',{'person':person,'reviews':reviews,'average':reviews.aggregate(a=Avg('rating'))['a'],'member':member,'friendship':social.friendship(me,person.user) if member and me.pk!=pk else None,'posts':posts})
 
 @member
 @require_POST
-def social(request,pk):
+def friend(request,pk):
     other=get_object_or_404(User,pk=pk,profile__restricted=False)
     action=request.POST.get('action','')
     try:
-        if action in ('friend','crush'):
-            matched=connect(request.user,other,action)
-            if action=='crush': messages.success(request,'你們互相心動了！ / It’s a match!' if matched else '已送出心動。只有對方也對你心動時，雙方才會收到通知。 / Crush sent. You’ll both hear only if it’s mutual.')
-            else: messages.success(request,'你們已成為好友 / You are now friends' if matched else '已送出好友請求 / Friend request sent')
-        elif action in ('unfriend','uncrush'): disconnect(request.user,other,action[2:])
-        elif action=='block': block(request.user,other); messages.success(request,'已封鎖。對方不會收到通知。 / Blocked. They are not notified.')
-        elif action=='unblock': Block.objects.filter(blocker=request.user,blocked=other).delete()
+        if action=='request':
+            f=social.request_friend(request.user,other)
+            messages.success(request,'你們已成為好友 / You are now friends' if f.status=='accepted' else '已送出好友申請 / Friend request sent')
+        elif action in ('accept','decline'):
+            f=social.friendship(request.user,other)
+            if not f: raise ValidationError('找不到好友申請 / Friend request not found')
+            social.respond(request.user,f.pk,action=='accept')
+        elif action=='cancel':
+            f=social.friendship(request.user,other)
+            if not f: raise ValidationError('找不到好友申請 / Friend request not found')
+            social.cancel_request(request.user,f.pk)
+        elif action=='remove': social.remove_friend(request.user,other)
         elif action=='chat':
-            if blocked(request.user,other) or not (mutual(request.user,other,'friend') or mutual(request.user,other,'crush')): raise PermissionDenied()
-            return redirect('thread',pk=direct_thread(request.user,other).pk)
+            if not social.are_friends(request.user,other): raise PermissionDenied()
+            return redirect('thread',pk=social.direct_thread(request.user,other).pk)
         else: raise Http404()
     except ValidationError as exc: error(request,exc)
-    return redirect(request.POST.get('next') if request.POST.get('next') in ('/friends/',) else f'/people/{pk}/')
+    return redirect(safe_next(request,f'/people/{pk}/'))
 
-@member
-def friends(request):
-    me=request.user
-    rows=list(Connection.objects.filter(Q(sender=me)|Q(recipient=me)).values_list('sender_id','recipient_id','kind'))
-    sent={(r,k) for s,r,k in rows if s==me.pk}; received={(s,k) for s,r,k in rows if r==me.pk}
-    hidden=set(Block.objects.filter(blocker=me).values_list('blocked_id',flat=True))|set(Block.objects.filter(blocked=me).values_list('blocker_id',flat=True))
-    friend_ids={u for u,k in sent&received if k=='friend'}-hidden
-    match_ids={u for u,k in sent&received if k=='crush'}-hidden
-    request_ids={u for u,k in received-sent if k=='friend'}-hidden
-    met=met_ids(me)-hidden-friend_ids
-    people={p.user_id:p for p in Profile.objects.filter(user_id__in=friend_ids|match_ids|request_ids|met|hidden,restricted=False)}
-    pick=lambda ids:[people[i] for i in sorted(ids) if i in people]
-    return render(request,'market/friends.html',{'friend_rows':pick(friend_ids),'match_rows':pick(match_ids),'request_rows':pick(request_ids),'met_rows':pick(met),'blocked_rows':pick(set(Block.objects.filter(blocker=me).values_list('blocked_id',flat=True))),'crushed':{u for u,k in sent if k=='crush'}})
-
-def buddies(request):
-    q=request.GET.get('q','').strip(); kind=request.GET.get('kind','')
-    rows=Buddy.objects.filter(active=True,when__gt=timezone.now(),owner__profile__restricted=False)
-    if request.user.is_authenticated: rows=rows.exclude(owner__blocks_made__blocked=request.user).exclude(owner__blocks_received__blocker=request.user)
-    if q: rows=rows.filter(Q(title__icontains=q)|Q(description__icontains=q)|Q(location__icontains=q))
-    if kind: rows=rows.filter(kind=kind)
-    rows=rows.annotate(taken=Count('joins',filter=Q(joins__status='accepted'))).select_related('owner__profile','item').order_by('when','pk')[:100]
-    return render(request,'market/buddies.html',{'rows':rows,'kinds':BUDDY_KINDS})
+BUDDY_WHEN={'today':1,'week':7,'month':30}
+def buddy_list(request):
+    p=request.GET; q=p.get('q','').strip(); category=p.get('category',''); kind=p.get('kind',''); when=p.get('when',''); state=p.get('state','')
+    now=timezone.now()
+    rows=BuddyPost.objects.filter(owner__profile__restricted=False).annotate(joined_count=Count('applications',filter=Q(applications__status='accepted')),finish_at=Coalesce('ends','starts'))
+    if q: rows=rows.filter(Q(title__icontains=q)|Q(description__icontains=q)|Q(location__icontains=q)|Q(skills__icontains=q))
+    if category in KINDS_BY_CATEGORY: rows=rows.filter(category=category)
+    if kind in dict(BUDDY_KINDS): rows=rows.filter(kind=kind)
+    if when in BUDDY_WHEN: rows=rows.filter(starts__lt=now+timedelta(days=BUDDY_WHEN[when]),finish_at__gt=now)
+    active=rows.filter(status='open',finish_at__gt=now)
+    rows={'open':active.filter(joined_count__lt=F('capacity')),'full':active.filter(joined_count__gte=F('capacity')),'closed':rows.filter(status='closed'),'ended':rows.filter(status='open',finish_at__lte=now),'all':rows}.get(state,active)
+    rows=rows.select_related('owner__profile').order_by('-starts' if state in ('closed','ended','all') else 'starts','pk')[:100]
+    return render(request,'market/buddies.html',{'rows':[(row,row.state(row.joined_count)) for row in rows],'categories':BUDDY_CATEGORIES,'kinds':BUDDY_KINDS,'kinds_by_category':KINDS_BY_CATEGORY,'states':BuddyPost.STATES})
 
 @member
 def buddy_edit(request,pk=None):
-    obj=get_object_or_404(Buddy,pk=pk,owner=request.user) if pk else None
-    form=BuddyForm(request.user,request.POST or None,instance=obj,initial=None if obj else {'item':request.GET.get('item')})
+    post=get_object_or_404(BuddyPost,pk=pk,owner=request.user) if pk else None
+    form=BuddyForm(request.POST if request.method=='POST' else None,instance=post,joined=post.joined() if post else 0,initial=None if post else {'category':request.GET.get('category') if request.GET.get('category') in KINDS_BY_CATEGORY else 'buddy'})
     if request.method=='POST' and form.is_valid():
-        obj=form.save(commit=False); obj.owner=request.user; obj.save(); return redirect('buddy',pk=obj.pk)
-    return render(request,'market/form.html',{'form':form,'title':'發布／編輯搭子 / Find or edit a buddy post','buddy_form':True})
+        try:
+            if not post: throttle('buddy-post:'+str(request.user.pk),10,86400)
+            with transaction.atomic():
+                if post: social.lock_post(post.pk)
+                obj=form.save(commit=False); obj.owner=request.user; obj.save()
+            messages.success(request,'招募已儲存 / Post saved'); return redirect('buddy',pk=obj.pk)
+        except ValidationError as exc: form.add_error(None,exc)
+    return render(request,'market/buddy_form.html',{'form':form,'post':post})
 
 def buddy_detail(request,pk):
-    obj=get_object_or_404(Buddy.objects.select_related('owner__profile','item'),pk=pk)
+    post=get_object_or_404(BuddyPost.objects.select_related('owner__profile'),pk=pk)
     me=request.user
-    if (not obj.active or obj.owner.profile.restricted) and obj.owner_id!=me.pk and not me.is_staff: raise Http404()
+    if post.owner.profile.restricted and me.pk!=post.owner_id and not me.is_staff: raise Http404()
     if request.method=='POST':
         if not me.is_authenticated: return redirect('login')
-        if not me.profile.verified or me.profile.restricted: raise PermissionDenied()
+        if not hasattr(me,'profile') or not me.profile.verified or me.profile.restricted: raise PermissionDenied()
         action=request.POST.get('action','')
+        application=request.POST.get('application','')
         try:
-            if action=='join': join_buddy(obj.pk,me,request.POST.get('text','').strip()); messages.success(request,'已報名，等待發起人確認 / Request sent. Waiting for the host.')
-            elif action in ('accept','decline'):
-                join=request.POST.get('join','')
-                if not join.isdigit() or not obj.joins.filter(pk=join).exists(): raise Http404()
-                answer_join(int(join),me,action=='accept')
-            elif action=='leave': BuddyJoin.objects.filter(buddy=obj,user=me).exclude(status='declined').delete()
+            if action=='apply':
+                social.apply(post.pk,me,request.POST.get('message','').strip()); messages.success(request,'已送出申請，等待發起人審核 / Application sent. Waiting for the host.')
+            elif action=='withdraw': social.withdraw(post.pk,me); messages.success(request,'已撤回 / Withdrawn')
+            elif action in ('accept','decline','remove'):
+                if not application.isdigit(): raise Http404()
+                if action=='remove': social.remove_member(post.pk,me,int(application))
+                else: social.decide(post.pk,me,int(application),action=='accept')
+            elif action in ('close','reopen'): social.set_open(post.pk,me,action=='reopen')
             else: raise Http404()
         except ValidationError as exc: error(request,exc)
         return redirect('buddy',pk=pk)
-    joins=list(obj.joins.select_related('user__profile').order_by('created'))
-    mine=next((j for j in joins if j.user_id==me.pk),None)
-    accepted=[j for j in joins if j.status=='accepted']
-    insider=me.pk==obj.owner_id or (mine and mine.status=='accepted')
-    thread=Thread.objects.filter(buddy=obj,first=me).first() if mine else None
-    return render(request,'market/buddy.html',{'buddy':obj,'joins':joins if me.pk==obj.owner_id else [],'mine':mine,'accepted':accepted if insider else [],'taken':len(accepted),'thread':thread,'open':obj.active and obj.when>timezone.now()})
+    applications=list(post.applications.select_related('user__profile').order_by('created'))
+    members=[a for a in applications if a.status=='accepted']
+    mine=next((a for a in applications if a.user_id==me.pk),None) if me.is_authenticated else None
+    host=me.pk==post.owner_id
+    threads={t.first_id:t for t in post.threads.all()} if host or (mine and mine.status=='accepted') else {}
+    return render(request,'market/buddy.html',{'post':post,'state':post.state(len(members)),'joined':len(members),'left':max(post.capacity-len(members),0),'host':host,'mine':mine,
+        'pending':[a for a in applications if a.status=='pending'] if host else [],'members':members if host or (mine and mine.status=='accepted') else [],
+        'threads':threads,'my_thread':threads.get(me.pk) if mine and mine.status=='accepted' else None})
 
 @member
 def report(request,kind,pk):
-    model={'item':Item,'user':User,'order':Order,'buddy':Buddy,'team':Team}.get(kind)
+    model={'item':Item,'user':User,'order':Order,'buddy':BuddyPost}.get(kind)
     if not model: raise Http404()
     obj=get_object_or_404(model,pk=pk)
     if kind=='order' and request.user.pk not in (obj.borrower_id,obj.item.owner_id): raise PermissionDenied()
@@ -355,19 +376,6 @@ def media(request,kind,pk):
         if (photo.item.status!='listed' or photo.item.owner.profile.restricted) and request.user.pk!=photo.item.owner_id and not request.user.is_staff: raise Http404()
         file=photo.image
     elif kind=='avatar': file=get_object_or_404(Profile,user_id=pk,restricted=False).avatar
-    elif kind=='gpa':
-        record=get_object_or_404(GpaVerification,pk=pk)
-        me=request.user
-        reviewer=me.is_authenticated and me.is_staff and me.has_perm('market.review_gpa')
-        # Transcripts: the owner and authorised reviewers only; every reviewer view is audited.
-        if not me.is_authenticated or (me.pk!=record.user_id and not reviewer): raise PermissionDenied()
-        if not record.proof: raise Http404()
-        if me.pk!=record.user_id: teamup.audit(record,me,'viewed_proof')
-        pdf=record.proof.name.endswith('.pdf')
-        response=FileResponse(record.proof.open('rb'),content_type='application/pdf' if pdf else 'image/jpeg',as_attachment=pdf,filename=f'gpa-{record.pk}.pdf' if pdf else None)
-        response['Cache-Control']='private, no-store'
-        response['Content-Security-Policy']="default-src 'none'; sandbox"
-        return response
     elif kind=='evidence':
         photo=get_object_or_404(Evidence.objects.select_related('order__item'),pk=pk)
         if not request.user.is_authenticated or (request.user.pk not in (photo.order.borrower_id,photo.order.item.owner_id) and not request.user.is_staff): raise PermissionDenied()

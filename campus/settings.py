@@ -14,7 +14,7 @@ CSRF_TRUSTED_ORIGINS = [x for x in os.getenv('CSRF_TRUSTED_ORIGINS', '').split('
 if os.getenv('RENDER_EXTERNAL_HOSTNAME'):
     ALLOWED_HOSTS.append(os.environ['RENDER_EXTERNAL_HOSTNAME']); CSRF_TRUSTED_ORIGINS.append('https://'+os.environ['RENDER_EXTERNAL_HOSTNAME'])
 INSTALLED_APPS = ['django.contrib.admin','django.contrib.auth','django.contrib.contenttypes','django.contrib.sessions','django.contrib.messages','django.contrib.staticfiles','market']
-MIDDLEWARE = ['django.middleware.security.SecurityMiddleware','market.middleware.SecurityHeadersMiddleware','whitenoise.middleware.WhiteNoiseMiddleware','django.contrib.sessions.middleware.SessionMiddleware','django.middleware.common.CommonMiddleware','django.middleware.csrf.CsrfViewMiddleware','django.contrib.auth.middleware.AuthenticationMiddleware','market.middleware.AccountMiddleware','django.contrib.messages.middleware.MessageMiddleware','django.middleware.clickjacking.XFrameOptionsMiddleware']
+MIDDLEWARE = ['django.middleware.security.SecurityMiddleware','market.middleware.SecurityHeadersMiddleware','whitenoise.middleware.WhiteNoiseMiddleware','django.contrib.sessions.middleware.SessionMiddleware','django.middleware.common.CommonMiddleware','django.middleware.csrf.CsrfViewMiddleware','django.contrib.auth.middleware.AuthenticationMiddleware','market.middleware.AccountMiddleware','market.i18n.LanguageMiddleware','django.contrib.messages.middleware.MessageMiddleware','django.middleware.clickjacking.XFrameOptionsMiddleware']
 ROOT_URLCONF = 'campus.urls'
 TEMPLATES = [{'BACKEND':'django.template.backends.django.DjangoTemplates','DIRS':[], 'APP_DIRS':True,'OPTIONS':{'builtins':['market.templatetags.ui'],'context_processors':['django.template.context_processors.request','django.contrib.auth.context_processors.auth','django.contrib.messages.context_processors.messages','market.context.ui']}}]
 WSGI_APPLICATION = 'campus.wsgi.application'
@@ -77,8 +77,6 @@ AI_IMAGE_DATA_URI = os.getenv('AI_IMAGE_DATA_URI','0') == '1'
 # Shown to users before they upload, because photos leave this server.
 AI_PROVIDER_LABEL = os.getenv('AI_PROVIDER_LABEL','智譜 AI（中國內地） / Zhipu AI (mainland China)')
 CARBON_AVOIDED_PURCHASE_RATE = os.getenv('CARBON_AVOIDED_PURCHASE_RATE','0.25')
-# GPA proof files are deleted this many days after a reviewer decides (cleanup_auth runs the purge).
-GPA_PROOF_RETENTION_DAYS = int(os.getenv('GPA_PROOF_RETENTION_DAYS','14'))
 EMAIL_TIMEOUT = 15
 
 SECURE_HSTS_INCLUDE_SUBDOMAINS = not DEBUG
