@@ -15,6 +15,10 @@ from django.utils import timezone
 from .models import *
 from .services import *
 from .impact import impact_summary
+from .teamup import review_gpa, purge_proofs, start_team
+from io import StringIO
+from django.contrib.auth.models import Permission
+from django.core.management import call_command
 
 def make_user(name,verified=True):
     u=User.objects.create_user(name+'@my.cityu.edu.hk',email=name+'@my.cityu.edu.hk')
@@ -341,8 +345,8 @@ class Social(TestCase):
     def test_crush_secret_until_mutual(self):
         b=self.post_buddy();BuddyJoin.objects.create(buddy=b,user=self.b,status='accepted')
         self.social(self.ca,self.b,'crush');self.assertFalse(Connection.objects.exists())
-        self.assertContains(self.ca.post('/profile/',{'nickname':'amy','dating':'on','social':'on'}),'Confirm you are 18 or older')
-        self.ca.post('/profile/',{'nickname':'amy','dating':'on','adult':'on','social':'on','bio':'Hiker','interests':'hiking, 攝影'})
+        self.assertContains(self.ca.post('/profile/dating/',{'dating':'on'}),'Confirm you are 18 or older')
+        self.ca.post('/profile/dating/',{'dating':'on','adult':'on'});self.ca.post('/profile/social/',{'social':'on','bio':'Hiker','interests':'hiking, 攝影'})
         self.assertTrue(Profile.objects.get(user=self.a).dating)
         notes=Notification.objects.count();self.social(self.ca,self.b,'crush')
         self.assertTrue(Connection.objects.filter(sender=self.a,kind='crush').exists());self.assertEqual(Notification.objects.count(),notes)
@@ -352,7 +356,7 @@ class Social(TestCase):
         Profile.objects.filter(user=self.b).update(dating=True);self.social(self.cb,self.a,'crush')
         self.assertTrue(mutual(self.a,self.b,'crush'));self.assertEqual(Notification.objects.filter(text__contains='互相心動').count(),2)
         self.assertContains(self.ca.get(f'/people/{self.b.pk}/'),'你們互相心動');self.assertContains(self.ca.get('/friends/'),'>ben ↗<')
-        self.ca.post('/profile/',{'nickname':'amy','social':'on'})
+        self.ca.post('/profile/dating/',{})
         self.assertFalse(Connection.objects.filter(sender=self.a).exists());self.assertFalse(mutual(self.a,self.b,'crush'))
     def test_block(self):
         b=self.post_buddy(client=self.cb,spots='3');BuddyJoin.objects.create(buddy=b,user=self.a,status='accepted')
@@ -382,6 +386,212 @@ class Social(TestCase):
         self.assertEqual(Client().get(f'/buddies/{b.pk}/').status_code,200);self.assertEqual(Client().get('/friends/').status_code,302)
         self.assertEqual(self.cc.post(f'/report/buddy/{b.pk}/',{'reason':'Spam activity'}).status_code,302)
         self.assertEqual(Report.objects.get().kind,'buddy')
+
+def school_user(name,domain):
+    u=User.objects.create_user(name+'@'+domain,email=name+'@'+domain)
+    Profile.objects.create(user=u,nickname=name,verified=True)
+    return u
+
+class TeamUp(TestCase):
+    def setUp(self):
+        self.lead=make_user('leader');self.ann=make_user('annie');self.bob=make_user('bobby')
+        self.cl,self.ca,self.cb=Client(),Client(),Client()
+        for client,u in ((self.cl,self.lead),(self.ca,self.ann),(self.cb,self.bob)): client.force_login(u)
+        self.form={'kind':'course','course_code':'ee 1001','title':'Line follower robot','description':'Arduino robot for EE1001','size':'1','skills':'Python, PCB Design','duration':'6 weeks','deadline':(timezone.localdate()+timedelta(days=30)).isoformat(),'mode':'hybrid'}
+    def new_team(self,**extra):
+        self.assertEqual(self.cl.post('/teams/new/',{**self.form,**extra}).status_code,302)
+        return Team.objects.latest('pk')
+    def act(self,client,team,action,**data): return client.post(f'/teams/{team.pk}/',{'action':action,**data})
+    def test_create_apply_review_members_chat_and_disband(self):
+        t=self.new_team()
+        self.assertEqual((t.course_code,t.university.code,t.status),('EE1001','cityuhk','recruiting'))
+        self.assertEqual(list(t.members.values_list('user','role')),[(self.lead.pk,'leader')])
+        self.assertContains(Client().get('/teams/'),'Line follower robot')
+        self.assertContains(self.ca.get('/teams/',{'course':'ee1001','skill':'pcb'}),'Line follower robot')
+        self.assertNotContains(self.ca.get('/teams/',{'skill':'matlab'}),'Line follower robot')
+        thread=Thread.objects.get(team=t)
+        self.act(self.ca,t,'apply',message='I can do the PCB')
+        a=TeamApplication.objects.get();self.assertEqual(a.status,'pending');self.assertFalse(t.members.filter(user=self.ann).exists())
+        self.assertTrue(Notification.objects.filter(user=self.lead,url=f'/teams/{t.pk}/').exists())
+        # Only the leader decides; applying alone gives no chat access.
+        for client in (self.ca,self.cb): self.assertEqual(self.act(client,t,'accept',application=a.pk).status_code,403)
+        self.assertEqual(self.ca.get(f'/messages/{thread.pk}/').status_code,403)
+        self.assertEqual(self.act(self.cl,t,'accept',application=999).status_code,404)
+        self.act(self.cl,t,'accept',application=a.pk)
+        self.assertEqual(t.members.get(user=self.ann).role,'member');self.assertEqual(TeamApplication.objects.get().status,'accepted')
+        self.ca.post(f'/messages/{thread.pk}/',{'text':'Hi team'});self.ca.post(f'/messages/{thread.pk}/',{'text':'Meeting Monday?'})
+        self.assertEqual(thread.messages.count(),2)
+        self.assertEqual(Notification.objects.filter(user=self.lead,url=f'/messages/{thread.pk}/').count(),1)
+        self.assertContains(self.ca.get('/messages/'),'Line follower robot')
+        self.act(self.cl,t,'announce',announcement='Lab 3 on Friday')
+        self.assertContains(self.ca.get(f'/teams/{t.pk}/'),'Lab 3 on Friday');self.assertNotContains(self.cb.get(f'/teams/{t.pk}/'),'Lab 3 on Friday')
+        self.assertContains(self.ca.get(f'/teams/{t.pk}/'),f'/people/{self.ann.pk}/');self.assertNotContains(self.cb.get(f'/teams/{t.pk}/'),f'/people/{self.ann.pk}/')
+        self.act(self.cb,t,'apply');b=TeamApplication.objects.get(user=self.bob)
+        self.assertEqual(self.act(self.cl,t,'accept',application=b.pk).status_code,302)
+        self.assertEqual(TeamApplication.objects.get(user=self.bob).status,'pending')
+        self.assertContains(self.cl.post(f'/teams/{t.pk}/',{'action':'accept','application':b.pk},follow=True),'Team is full')
+        self.act(self.ca,t,'leave');self.assertEqual(self.ca.get(f'/messages/{thread.pk}/').status_code,403)
+        self.act(self.cl,t,'disband');t.refresh_from_db();self.assertEqual(t.status,'disbanded')
+        self.assertEqual(TeamApplication.objects.get(user=self.bob).status,'rejected')
+        self.cl.post(f'/messages/{thread.pk}/',{'text':'Still here?'});self.assertEqual(thread.messages.count(),2)
+        self.assertNotContains(Client().get('/teams/'),'Line follower robot')
+    def test_edit_withdraw_remove_and_validation(self):
+        r=self.cl.post('/teams/new/',{**self.form,'course_code':'EE 10*01','deadline':'2000-01-01'})
+        self.assertContains(r,'For example EE1001');self.assertContains(r,'Deadline has passed');self.assertFalse(Team.objects.exists())
+        t=self.new_team()
+        self.assertEqual(self.ca.get(f'/teams/{t.pk}/edit/').status_code,404)
+        self.assertEqual(self.cl.post(f'/teams/{t.pk}/edit/',{**self.form,'title':'Robot v2'}).status_code,302);t.refresh_from_db();self.assertEqual(t.title,'Robot v2')
+        self.act(self.ca,t,'apply');self.act(self.ca,t,'withdraw');self.assertFalse(TeamApplication.objects.exists())
+        self.act(self.ca,t,'apply');self.act(self.cl,t,'accept',application=TeamApplication.objects.get().pk)
+        self.assertEqual(self.act(self.cb,t,'remove',member=self.ann.pk).status_code,403)
+        self.act(self.cl,t,'remove',member=self.ann.pk);self.assertFalse(t.members.filter(user=self.ann).exists())
+        self.act(self.cl,t,'closed');self.act(self.cb,t,'apply');self.assertFalse(TeamApplication.objects.filter(user=self.bob).exists())
+        self.assertEqual(self.cl.post(f'/report/team/{t.pk}/',{'reason':'Spam team post'}).status_code,302)
+    def test_cross_school_and_blocking(self):
+        University.objects.filter(code='hku').update(enabled=True)
+        hana=school_user('hana','connect.hku.hk');ch=Client();ch.force_login(hana)
+        t=self.new_team()
+        self.assertNotContains(ch.get('/teams/',{'scope':'all'}),'Line follower robot')
+        self.act(ch,t,'apply');self.assertFalse(TeamApplication.objects.exists())
+        Team.objects.filter(pk=t.pk).update(cross_school=True)
+        self.assertNotContains(ch.get('/teams/'),'Line follower robot');self.assertContains(ch.get('/teams/',{'scope':'all'}),'Line follower robot')
+        self.act(ch,t,'apply');self.assertTrue(TeamApplication.objects.filter(user=hana).exists())
+        self.act(self.ca,t,'apply');self.cl.post(f'/people/{self.ann.pk}/social/',{'action':'block'})
+        self.assertEqual(TeamApplication.objects.get(user=self.ann).status,'rejected')
+        Block.objects.create(blocker=self.lead,blocked=self.bob)
+        self.act(self.cb,t,'apply');self.assertFalse(TeamApplication.objects.filter(user=self.bob).exists())
+        University.objects.filter(code='hku').update(enabled=False)
+        self.assertEqual(self.act(ch,t,'withdraw').status_code,403)
+        self.assertNotContains(self.cb.get('/teams/'),'Line follower robot')
+    def test_academic_privacy_invites_and_dating_isolation(self):
+        d={'major':'Electrical Engineering','year':'2','areas':'robotics','skills':'Python, MATLAB','courses':'ee 1001','kinds':['course','hackathon'],'projects':'Robot arm','link':'https://github.com/example'}
+        self.ca.post('/profile/academic/',d);p=AcademicProfile.objects.get(user=self.ann)
+        self.assertEqual((p.public,p.courses,p.kinds),(False,'EE1001','course,hackathon'))
+        AcademicProfile.objects.filter(pk=p.pk).update(skills='PCB Design, 機器學習、Python');p.refresh_from_db();self.assertEqual(p.skill_tags,['PCB Design','機器學習','Python'])
+        self.assertEqual(self.cb.get(f'/people/{self.ann.pk}/academic/').status_code,404);self.assertNotContains(self.cb.get('/teams/people/'),'Electrical Engineering')
+        t=self.new_team();self.act(self.ca,t,'apply')
+        page=self.cl.get(f'/teams/{t.pk}/');self.assertNotContains(page,'Electrical Engineering');self.assertContains(page,'選擇不分享')
+        self.assertEqual(self.cl.get(f'/people/{self.ann.pk}/academic/').status_code,404)
+        t2=self.new_team(title='Hackathon crew');self.act(self.ca,t2,'apply',share_profile='on')
+        self.assertContains(self.cl.get(f'/teams/{t2.pk}/'),'Electrical Engineering');self.assertEqual(self.cl.get(f'/people/{self.ann.pk}/academic/').status_code,200)
+        self.assertEqual(self.cb.get(f'/people/{self.ann.pk}/academic/').status_code,404)
+        self.act(self.cl,t2,'reject',application=TeamApplication.objects.get(team=t2).pk)
+        self.assertEqual(self.cl.get(f'/people/{self.ann.pk}/academic/').status_code,404)
+        # Invitations need a public academic profile and are only a notification.
+        self.cl.post(f'/people/{self.ann.pk}/invite/',{'team':t.pk});self.assertFalse(Notification.objects.filter(user=self.ann,text__contains='邀請').exists())
+        self.ca.post('/profile/academic/',{**d,'public':'on'})
+        self.assertContains(self.cb.get('/teams/people/',{'skill':'matlab','kind':'hackathon'}),'Electrical Engineering')
+        self.assertEqual(Client().get('/teams/people/').status_code,302);self.assertEqual(Client().get(f'/people/{self.ann.pk}/academic/').status_code,302)
+        self.assertNotContains(Client().get(f'/people/{self.ann.pk}/'),'Electrical Engineering')
+        t3=self.new_team(title='Research');self.cl.post(f'/people/{self.ann.pk}/invite/',{'team':t3.pk})
+        self.assertTrue(Notification.objects.filter(user=self.ann,url=f'/teams/{t3.pk}/').exists());self.assertFalse(Thread.objects.filter(first=self.lead,second=self.ann).exists())
+        # Dating stays off by default and teammates never count as having met.
+        self.assertFalse(Profile.objects.get(user=self.ann).dating)
+        self.act(self.ca,t3,'apply');self.act(self.cl,t3,'accept',application=TeamApplication.objects.get(team=t3).pk)
+        Profile.objects.filter(user__in=[self.lead,self.ann]).update(dating=True,social=True)
+        self.assertEqual(met_ids(self.lead),set())
+        for kind in ('crush','friend'):
+            with self.assertRaises(ValidationError): connect(self.lead,self.ann,kind)
+        hub=self.cb.get('/connect/');self.assertContains(hub,'預設關閉');self.assertNotContains(hub,'annie')
+
+def pdf(body=b''): return SimpleUploadedFile('transcript.pdf',b'%PDF-1.4\n'+body+b'\n%%EOF',content_type='application/pdf')
+
+class GpaReview(TestCase):
+    def setUp(self):
+        self.student=make_user('student');self.other=make_user('peer')
+        self.reviewer=User.objects.create_user('reviewer',is_staff=True);self.reviewer.user_permissions.add(Permission.objects.get(codename='review_gpa'))
+        self.staff=User.objects.create_user('staff',is_staff=True)
+        self.cs,self.co,self.cr,self.cx=Client(),Client(),Client(),Client()
+        for client,u in ((self.cs,self.student),(self.co,self.other),(self.cr,self.reviewer),(self.cx,self.staff)): client.force_login(u)
+        self.cityu=University.objects.get(code='cityuhk')
+        self.cs.post('/profile/academic/',{'major':'Computer Science','public':'on'})
+        self.tmp=tempfile.mkdtemp();self.media=override_settings(MEDIA_ROOT=self.tmp);self.media.enable()
+    def tearDown(self): self.media.disable();shutil.rmtree(self.tmp)
+    def create(self,value='3.65',scale='4.30',submit='draft'):
+        return self.cs.post('/profile/gpa/',{'action':'create','university':self.cityu.pk,'value':value,'scale':scale,'term':'2026 Spring','submit':submit})
+    def academic(self,client=None): return (client or self.co).get(f'/people/{self.student.pk}/academic/')
+    def test_review_flow_privacy_and_retention(self):
+        self.assertContains(self.create(value='4.50'),'GPA cannot exceed the scale');self.assertFalse(GpaVerification.objects.exists())
+        self.assertRedirects(self.create(submit='review'),f'/profile/gpa/{GpaVerification.objects.get().pk}/submit/')
+        r=GpaVerification.objects.get();self.assertEqual((r.status,r.visibility),('draft','hidden'))
+        self.assertNotContains(self.academic(),'3.65')
+        url=f'/profile/gpa/{r.pk}/submit/'
+        self.assertEqual(self.co.get(url).status_code,404)
+        self.assertContains(self.cs.post(url,{'proof':pdf(b'/JavaScript (app.alert(1))')}),'active content')
+        self.assertContains(self.cs.post(url,{'proof':SimpleUploadedFile('fake.pdf',b'not a pdf',content_type='application/pdf')}),'Invalid PDF')
+        r.refresh_from_db();self.assertEqual(r.status,'draft')
+        self.cs.post(url,{'proof':pdf()});r.refresh_from_db();self.assertEqual(r.status,'pending');self.assertTrue(r.proof.name.endswith('.pdf'))
+        self.assertNotContains(self.academic(),'3.65')
+        proof=f'/media/gpa/{r.pk}/'
+        for client in (Client(),self.co,self.cx): self.assertEqual(client.get(proof).status_code,403)
+        for client in (self.cs,self.cr):
+            response=client.get(proof);self.assertEqual(response.status_code,200);self.assertIn('attachment',response['Content-Disposition']);self.assertEqual(response['Cache-Control'],'private, no-store');self.assertTrue(response.getvalue().startswith(b'%PDF-'))
+        self.assertEqual(list(r.audits.values_list('action','actor')),[('submitted',self.student.pk),('viewed_proof',self.reviewer.pk)])
+        self.assertEqual(self.cx.get('/admin/market/gpaverification/').status_code,403);self.assertEqual(self.cr.get('/admin/market/gpaverification/').status_code,200)
+        with self.assertRaises(PermissionDenied): review_gpa(r.pk,self.staff,True)
+        self.cr.post('/admin/market/gpaverification/',{'action':'approve','_selected_action':[r.pk]})
+        r.refresh_from_db();self.assertEqual((r.status,r.reviewer,r.visibility),('verified',self.reviewer,'hidden'))
+        self.assertTrue(Notification.objects.filter(user=self.student,url='/profile/gpa/').exists())
+        # Reviewed but still hidden until the student chooses to show it.
+        self.assertNotContains(self.academic(),'3.65')
+        self.cs.post('/profile/gpa/',{'action':'visibility','record':r.pk,'visibility':'exact'})
+        page=self.academic();self.assertContains(page,'GPA 3.65 / 4.30');self.assertContains(page,'平台已審核');self.assertContains(page,'2026 Spring');self.assertContains(page,'並非大學官方認證')
+        self.assertNotContains(Client().get(f'/people/{self.student.pk}/'),'3.65');self.assertNotContains(self.co.get(f'/people/{self.student.pk}/'),'3.65')
+        self.cs.post('/profile/gpa/',{'action':'visibility','record':r.pk,'visibility':'band'})
+        self.assertContains(self.academic(),'3.50–3.74');self.assertNotContains(self.academic(),'3.65')
+        self.cs.post('/profile/gpa/',{'action':'visibility','record':r.pk,'visibility':'hidden'});self.assertNotContains(self.academic(),'GPA')
+        self.create();draft=GpaVerification.objects.get(status='draft')
+        self.cs.post('/profile/gpa/',{'action':'visibility','record':draft.pk,'visibility':'exact'});draft.refresh_from_db();self.assertEqual(draft.visibility,'hidden')
+        self.co.post('/profile/gpa/',{'action':'delete','record':r.pk});self.assertTrue(GpaVerification.objects.filter(pk=r.pk).exists())
+        # Retention: the proof goes after GPA_PROOF_RETENTION_DAYS; the result and audit trail stay.
+        name=r.proof.name;self.assertTrue(r.proof.storage.exists(name))
+        GpaVerification.objects.filter(pk=r.pk).update(reviewed=timezone.now()-timedelta(days=13));self.assertEqual(purge_proofs(),0)
+        GpaVerification.objects.filter(pk=r.pk).update(reviewed=timezone.now()-timedelta(days=15))
+        with self.captureOnCommitCallbacks(execute=True): call_command('cleanup_auth',stdout=StringIO())
+        r.refresh_from_db();self.assertEqual((r.proof.name,r.status),('','verified'));self.assertIsNotNone(r.proof_removed);self.assertFalse(r.proof.storage.exists(name))
+        self.assertEqual(self.cr.get(proof).status_code,404);self.assertIn('proof_removed',r.audits.values_list('action',flat=True))
+    def test_one_pending_image_proof_withdraw_delete_and_self_review(self):
+        self.create();self.create();a,b=GpaVerification.objects.order_by('pk')
+        self.cs.post(f'/profile/gpa/{a.pk}/submit/',{'proof':photo()});a.refresh_from_db()
+        self.assertEqual(a.status,'pending');self.assertTrue(a.proof.name.endswith('.jpg'))
+        self.assertContains(self.cs.post(f'/profile/gpa/{b.pk}/submit/',{'proof':photo()}),'One review at a time')
+        r=self.cs.get(f'/media/gpa/{a.pk}/');self.assertEqual(r['Content-Type'],'image/jpeg');self.assertTrue(r.getvalue().startswith(b'\xff\xd8'))
+        name=a.proof.name
+        with self.captureOnCommitCallbacks(execute=True): self.cs.post('/profile/gpa/',{'action':'withdraw','record':a.pk})
+        a.refresh_from_db();self.assertEqual((a.status,a.proof.name),('draft',''));self.assertFalse(a.proof.storage.exists(name))
+        self.cs.post(f'/profile/gpa/{b.pk}/submit/',{'proof':photo()});b.refresh_from_db();name=b.proof.name
+        self.cs.post('/profile/gpa/',{'action':'delete','record':b.pk});self.assertTrue(GpaVerification.objects.filter(pk=b.pk).exists())
+        mine=GpaVerification.objects.create(user=self.reviewer,university=self.cityu,value=3,scale=4,term='2026 Spring',status='pending')
+        with self.assertRaises(PermissionDenied): review_gpa(mine.pk,self.reviewer,True)
+        self.cs.post('/profile/gpa/',{'action':'withdraw','record':b.pk})
+        with self.captureOnCommitCallbacks(execute=True): self.cs.post('/profile/gpa/',{'action':'delete','record':b.pk})
+        self.assertFalse(GpaVerification.objects.filter(pk=b.pk).exists());self.assertTrue(GpaAudit.objects.filter(action='deleted',record=None).exists())
+        with self.assertRaises(IntegrityError), transaction.atomic(): GpaVerification.objects.create(user=self.student,university=self.cityu,value=5,scale=4,term='x')
+
+@override_settings(EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend')
+class Universities(TestCase):
+    def sign_in(self,email):
+        c=Client();c.post('/login/',{'email':email})
+        path=re.search(r'http://testserver(/verify/[^\s]+)',mail.outbox[-1].body).group(1);c.post(path)
+        return Profile.objects.get(user__email=email)
+    def test_school_rows_control_domains_and_assignment(self):
+        self.assertTrue(University.objects.get(code='cityuhk').enabled);self.assertFalse(University.objects.get(code='hku').enabled)
+        self.assertEqual(self.sign_in('chan@my.cityu.edu.hk').university.code,'cityuhk')
+        self.assertContains(Client().post('/login/',{'email':'kim@connect.hku.hk'}),'Only approved school email')
+        University.objects.filter(code='hku').update(enabled=True)
+        self.assertContains(Client().get('/login/'),'@connect.hku.hk')
+        self.assertEqual(self.sign_in('kim@connect.hku.hk').university.code,'hku')
+        University.objects.filter(code='hku').update(enabled=False)
+        c=Client();c.force_login(User.objects.get(email='kim@connect.hku.hk'));self.assertEqual(c.get('/teams/new/').status_code,403)
+    def test_pages_render_both_languages(self):
+        u=make_user('pages');c=Client();c.force_login(u)
+        t=Team.objects.create(leader=u,university=University.objects.get(code='cityuhk'),kind='research',title='Pages',description='x');start_team(t)
+        g=GpaVerification.objects.create(user=u,university=t.university,value=3,scale=4,term='2026 Spring')
+        for language in ('en','zh'):
+            c.post('/language/',{'lang':language})
+            for url in ('/connect/','/teams/','/teams/?scope=all','/teams/new/',f'/teams/{t.pk}/',f'/teams/{t.pk}/edit/','/teams/people/',f'/people/{u.pk}/academic/','/profile/','/profile/academic/','/profile/gpa/',f'/profile/gpa/{g.pk}/submit/','/profile/social/','/profile/dating/',f'/messages/{t.thread.pk}/','/messages/','/rules/'):
+                self.assertEqual(c.get(url).status_code,200,(url,language))
+        self.assertEqual(Client().get('/connect/').status_code,200);self.assertEqual(Client().get(f'/teams/{t.pk}/').status_code,200)
 
 REPLY='草稿如下：\n```json\n{"title":"  入門單反相機  ","category":"weapons","description":"黑色相機，附鏡頭。","condition":"九成新","daily":"-5","extra":"ignored"}\n```'
 

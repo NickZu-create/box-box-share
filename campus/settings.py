@@ -77,6 +77,8 @@ AI_IMAGE_DATA_URI = os.getenv('AI_IMAGE_DATA_URI','0') == '1'
 # Shown to users before they upload, because photos leave this server.
 AI_PROVIDER_LABEL = os.getenv('AI_PROVIDER_LABEL','智譜 AI（中國內地） / Zhipu AI (mainland China)')
 CARBON_AVOIDED_PURCHASE_RATE = os.getenv('CARBON_AVOIDED_PURCHASE_RATE','0.25')
+# GPA proof files are deleted this many days after a reviewer decides (cleanup_auth runs the purge).
+GPA_PROOF_RETENTION_DAYS = int(os.getenv('GPA_PROOF_RETENTION_DAYS','14'))
 EMAIL_TIMEOUT = 15
 
 SECURE_HSTS_INCLUDE_SUBDOMAINS = not DEBUG

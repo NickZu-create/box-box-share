@@ -26,11 +26,20 @@ def member(view):
         return view(request,*args,**kwargs)
     return wrapped
 
+# ALLOWED_EMAIL_DOMAINS keeps working; enabling a University in admin adds its domains without a redeploy.
+def allowed_domains():
+    domains=set(settings.ALLOWED_EMAIL_DOMAINS)
+    for school in University.objects.filter(enabled=True).only('email_domains'): domains.update(school.domains)
+    return domains
+def school_for(email):
+    domain=email.rsplit('@',1)[-1].lower()
+    return next((u for u in University.objects.filter(email_domains__icontains=domain) if domain in u.domains),None)
+
 def valid_email(email):
     from django.core.validators import validate_email
     email = email.strip().lower()
     validate_email(email)
-    if email.rsplit('@',1)[-1] not in settings.ALLOWED_EMAIL_DOMAINS:
+    if email.rsplit('@',1)[-1] not in allowed_domains():
         raise ValidationError('Only approved school email domains / 僅接受指定學校郵箱')
     return email
 
@@ -67,7 +76,9 @@ def consume_token(raw):
     p,_=Profile.objects.get_or_create(user=user)
     if p.restricted or not user.is_active: raise PermissionDenied()
     user.set_unusable_password(); user.save()
-    p.verified=True; p.save()
+    p.verified=True
+    if not p.university_id: p.university=school_for(token.email)
+    p.save()
     token.used=True; token.save()
     return user
 
@@ -97,6 +108,9 @@ def availability(item,start,end,exclude=None):
     return days
 
 def notify(user,text,url): Notification.objects.create(user=user,text=text,url=url)
+# Busy group chats: one unread notification per conversation is enough.
+def notify_once(user,text,url):
+    if not Notification.objects.filter(user=user,url=url,read=False).exists(): notify(user,text,url)
 def event(order,actor,action,data=None):
     Audit.objects.create(order=order,actor=actor,action=action,data=data or {})
     other=order.borrower if actor.pk==order.item.owner_id else order.item.owner
@@ -205,7 +219,11 @@ def mutual(a,b,kind): return Connection.objects.filter(Q(sender=a,recipient=b)|Q
 def direct_thread(a,b):
     first,second=sorted((a,b),key=lambda u:u.pk)
     return Thread.objects.get_or_create(first=first,second=second,item=None,order=None,buddy=None)[0]
+def in_thread(thread,user):
+    if thread.team_id: return TeamMember.objects.filter(team_id=thread.team_id,user_id=user.pk).exists()
+    return user.pk in (thread.first_id,thread.second_id)
 def can_message(thread,user):
+    if thread.team_id: return thread.team.status!='disbanded' and in_thread(thread,user)
     other=thread.second if thread.first_id==user.pk else thread.first
     if thread.order_id: return True
     if blocked(user,other) or other.profile.restricted: return False
@@ -245,6 +263,8 @@ def block(user,other):
     Block.objects.get_or_create(blocker=user,blocked=other)
     Connection.objects.filter(Q(sender=user,recipient=other)|Q(sender=other,recipient=user)).delete()
     BuddyJoin.objects.filter(Q(user=user,buddy__owner=other)|Q(user=other,buddy__owner=user)).update(status='declined')
+    # Existing teammates stay (the leader can remove them); pending applications between the two are turned down.
+    TeamApplication.objects.filter(Q(user=user,team__leader=other)|Q(user=other,team__leader=user),status='pending').update(status='rejected',decided=timezone.now())
 
 @transaction.atomic
 def join_buddy(buddy_id,user,text):

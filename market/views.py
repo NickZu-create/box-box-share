@@ -17,7 +17,7 @@ from .models import *
 from .forms import *
 from .services import *
 from .impact import impact_summary, METHOD_URL
-from . import ai
+from . import ai, teamup
 
 def error(request,exc): messages.error(request,'; '.join(exc.messages))
 def home(request):
@@ -204,7 +204,7 @@ def survey(request,pk):
 
 @member
 def inbox(request):
-    threads=Thread.objects.filter(Q(first=request.user)|Q(second=request.user)).select_related('item','order__item','buddy','first__profile','second__profile')
+    threads=Thread.objects.filter(Q(first=request.user)|Q(second=request.user)|Q(team__members__user=request.user)).distinct().select_related('item','order__item','buddy','team','first__profile','second__profile')
     notifications=Notification.objects.filter(user=request.user).order_by('-created')[:100]
     if request.method=='POST': Notification.objects.filter(user=request.user).update(read=True); return redirect('inbox')
     return render(request,'market/inbox.html',{'threads':threads,'notifications':notifications})
@@ -219,8 +219,8 @@ def contact(request,pk):
 
 @member
 def chat(request,pk):
-    thread=get_object_or_404(Thread.objects.select_related('first__profile','second__profile','item','order__item','buddy'),pk=pk)
-    if request.user.pk not in (thread.first_id,thread.second_id): raise PermissionDenied()
+    thread=get_object_or_404(Thread.objects.select_related('first__profile','second__profile','item','order__item','buddy','team'),pk=pk)
+    if not in_thread(thread,request.user): raise PermissionDenied()
     if request.method=='POST':
         text=request.POST.get('text','').strip()
         try:
@@ -228,8 +228,11 @@ def chat(request,pk):
             throttle('message:'+str(request.user.pk),30,60)
             if not text or len(text)>2000: raise ValidationError('1–2000 characters / 請輸入 1–2000 字')
             Message.objects.create(thread=thread,sender=request.user,text=text)
-            other=thread.second if thread.first_id==request.user.pk else thread.first
-            notify(other,'收到新訊息 / New message',f'/messages/{thread.pk}/')
+            if thread.team_id:
+                for m in thread.team.members.exclude(user=request.user).select_related('user'): notify_once(m.user,'小組有新訊息 / New team message',f'/messages/{thread.pk}/')
+            else:
+                other=thread.second if thread.first_id==request.user.pk else thread.first
+                notify(other,'收到新訊息 / New message',f'/messages/{thread.pk}/')
         except ValidationError as exc: error(request,exc)
         return redirect('thread',pk=pk)
     return render(request,'market/chat.html',{'thread':thread,'open':can_message(thread,request.user),'chat_messages':list(reversed(thread.messages.select_related('sender__profile').order_by('-created','-pk')[:300]))})
@@ -237,21 +240,19 @@ def chat(request,pk):
 @member
 def profile_edit(request):
     form=ProfileForm(request.POST or None,request.FILES or None,instance=request.user.profile)
-    if request.method=='POST' and form.is_valid():
-        profile=form.save()
-        if not profile.dating: Connection.objects.filter(sender=request.user,kind='crush').delete()
-        return redirect('person',pk=request.user.pk)
-    return render(request,'market/form.html',{'form':form,'title':'個人資料 / Profile'})
+    if request.method=='POST' and form.is_valid(): form.save(); return redirect('person',pk=request.user.pk)
+    return render(request,'market/settings.html',{'form':form,'section':'basic','title':'基本資料 / Basic profile'})
 
 def person(request,pk):
     person=get_object_or_404(Profile.objects.select_related('user'),user_id=pk,restricted=False)
     reviews=Review.objects.filter(recipient_id=pk).select_related('author__profile').order_by('-created')
     context={'person':person,'reviews':reviews,'average':reviews.aggregate(a=Avg('rating'))['a'],'buddies':Buddy.objects.filter(owner_id=pk,active=True,when__gt=timezone.now()).order_by('when')[:6]}
     me=request.user
+    if me.is_authenticated and me.pk==pk: context['academic_visible']=True
     if me.is_authenticated and me.pk!=pk and hasattr(me,'profile'):
         sent=set(Connection.objects.filter(sender=me,recipient_id=pk).values_list('kind',flat=True))
         received=set(Connection.objects.filter(sender_id=pk,recipient=me).values_list('kind',flat=True))
-        context.update(social_panel=True,met=pk in met_ids(me),i_blocked=Block.objects.filter(blocker=me,blocked_id=pk).exists(),blocked=blocked(me,person.user),sent=sent,friends='friend' in sent&received,asked_me='friend' in received-sent,matched='crush' in sent&received)
+        context.update(social_panel=True,academic_visible=teamup.can_view_academic(me,person.user),met=pk in met_ids(me),i_blocked=Block.objects.filter(blocker=me,blocked_id=pk).exists(),blocked=blocked(me,person.user),sent=sent,friends='friend' in sent&received,asked_me='friend' in received-sent,matched='crush' in sent&received)
     return render(request,'market/person.html',context)
 
 @member
@@ -332,7 +333,7 @@ def buddy_detail(request,pk):
 
 @member
 def report(request,kind,pk):
-    model={'item':Item,'user':User,'order':Order,'buddy':Buddy}.get(kind)
+    model={'item':Item,'user':User,'order':Order,'buddy':Buddy,'team':Team}.get(kind)
     if not model: raise Http404()
     obj=get_object_or_404(model,pk=pk)
     if kind=='order' and request.user.pk not in (obj.borrower_id,obj.item.owner_id): raise PermissionDenied()
@@ -354,6 +355,19 @@ def media(request,kind,pk):
         if (photo.item.status!='listed' or photo.item.owner.profile.restricted) and request.user.pk!=photo.item.owner_id and not request.user.is_staff: raise Http404()
         file=photo.image
     elif kind=='avatar': file=get_object_or_404(Profile,user_id=pk,restricted=False).avatar
+    elif kind=='gpa':
+        record=get_object_or_404(GpaVerification,pk=pk)
+        me=request.user
+        reviewer=me.is_authenticated and me.is_staff and me.has_perm('market.review_gpa')
+        # Transcripts: the owner and authorised reviewers only; every reviewer view is audited.
+        if not me.is_authenticated or (me.pk!=record.user_id and not reviewer): raise PermissionDenied()
+        if not record.proof: raise Http404()
+        if me.pk!=record.user_id: teamup.audit(record,me,'viewed_proof')
+        pdf=record.proof.name.endswith('.pdf')
+        response=FileResponse(record.proof.open('rb'),content_type='application/pdf' if pdf else 'image/jpeg',as_attachment=pdf,filename=f'gpa-{record.pk}.pdf' if pdf else None)
+        response['Cache-Control']='private, no-store'
+        response['Content-Security-Policy']="default-src 'none'; sandbox"
+        return response
     elif kind=='evidence':
         photo=get_object_or_404(Evidence.objects.select_related('order__item'),pk=pk)
         if not request.user.is_authenticated or (request.user.pk not in (photo.order.borrower_id,photo.order.item.owner_id) and not request.user.is_staff): raise PermissionDenied()

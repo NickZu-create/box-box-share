@@ -1,1 +1,1 @@
-{% if thread.order %}{{ thread.order.snapshot.title }} · #{{ thread.order_id }}{% elif thread.item %}{{ thread.item.title }}{% elif thread.buddy %}{% tr '搭子' 'Buddy' %} · {{ thread.buddy.title }}{% else %}{% tr '朋友對話' 'Friends chat' %}{% endif %}
+{% if thread.order %}{{ thread.order.snapshot.title }} · #{{ thread.order_id }}{% elif thread.item %}{{ thread.item.title }}{% elif thread.buddy %}{% tr '搭子' 'Buddy' %} · {{ thread.buddy.title }}{% elif thread.team %}{% tr '小組' 'Team' %} · {{ thread.team.title }}{% else %}{% tr '朋友對話' 'Friends chat' %}{% endif %}

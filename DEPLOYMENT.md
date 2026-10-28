@@ -51,6 +51,7 @@ Caddy 是唯一公開入口。app/db 都沒有 host port；不要新增公開 ap
 | `EMAIL_HOST`、`EMAIL_PORT`、`EMAIL_HOST_USER`、`EMAIL_HOST_PASSWORD` | SMTP 連線 |
 | `EMAIL_USE_TLS` | 預設 `1`，使用 STARTTLS；本版配置為 port 587 |
 | `DEFAULT_FROM_EMAIL` | 已驗證寄件域名的地址 |
+| `GPA_PROOF_RETENTION_DAYS` | GPA 成績證明在審核決定後保留的天數，預設 `14`；`cleanup_auth` 會刪除過期檔案 |
 | `TRUST_PROXY_IP` | 僅受控私有 app 入口可設 `1` |
 
 ## 圖片與私隱
@@ -75,6 +76,10 @@ Caddy 是唯一公開入口。app/db 都沒有 host port；不要新增公開 ap
 docker compose exec -T app python manage.py cleanup_auth
 docker compose exec -T app python manage.py clearsessions
 ```
+
+`cleanup_auth` 亦會刪除審核決定後超過 `GPA_PROOF_RETENTION_DAYS` 天的 GPA 證明檔（Render 免費方案沒有 cron，每次啟動時執行）。
+
+GPA 審核員：在 `/admin/` 建立職員帳號（`is_staff`），只授予 `market | gpa verification | Can review GPA proofs / 可審核 GPA 證明` 權限即可看到審核佇列；其他職員看不到成績證明。審核員在變更頁填寫備註後，在列表用「Approve／Reject」動作決定。新增學校：在 admin 的 Universities 新增或啟用，填寫學生郵箱域名及滿分制。
 
 備份應包括 PostgreSQL、私有圖片及營運配置，並加密放至不同故障域。以下是在主機上產生一致的停機備份；備份前確認磁碟空間：
 

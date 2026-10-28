@@ -1,6 +1,6 @@
 # Box Box Share
 
-面向 CityUHK 社群、學生營運的物品租借／求借平台第一版，並可透過借物和搭子活動交朋友。不是學校官方平台，不代表學校認可。學校郵箱驗證只確認郵箱存取權，不代表在讀學籍已核實。
+面向 CityUHK 社群、學生營運的物品租借／求借平台第一版，並提供 Campus Connect：組隊合作（Team Up）、搭子交友（Meet）及自願開啟的心動配對（Dating）。實施計劃、權限隔離及 GPA 審核私隱方案見 [CONNECT-PLAN.md](CONNECT-PLAN.md)。不是學校官方平台，不代表學校認可。學校郵箱驗證只確認郵箱存取權，不代表在讀學籍已核實。
 
 **交付狀態：本機可運行，24 項自動化測試通過；未部署到公網，未接通真實 SMTP。** 香港移動網絡、校園網絡及真實學校郵箱投遞均待驗證。完整詳情見 [測試報告](TEST-RESULTS.md)、[功能清單](FEATURES.md) 和 [部署說明](DEPLOYMENT.md)。免費試用部署（Render + Neon + Resend）見 [DEPLOY-RENDER.md](DEPLOY-RENDER.md)。
 
@@ -50,6 +50,7 @@ python3.12 -m venv .venv
 
 - `campus/`：設定、URL、WSGI。
 - `market/models.py`：資料、價格／條款快照、確認紀錄。
+- `market/teamup.py`、`market/connect.py`：Team Up、學術資料、GPA 審核的服務層與視圖。
 - `market/services.py`：驗證、限流、權限、預約鎖定、延期、狀態機、圖片重新編碼。
 - `market/views.py`：手機優先伺服器渲染介面。
 - `market/templates/`、`market/static/`：繁中／英文 UI、CSS 和內嵌 SVG 插圖；無第三方前端資源依賴。
