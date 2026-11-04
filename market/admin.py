@@ -36,7 +36,7 @@ class ReportAdmin(admin.ModelAdmin):
     list_filter=['resolved','kind']
     readonly_fields=['reporter','kind','target','target_link','reason','created']
     def target_link(self,obj):
-        route={'item':f'/admin/market/item/{obj.target}/change/','user':f'/people/{obj.target}/','order':f'/admin/market/order/{obj.target}/change/','buddy':f'/admin/market/buddypost/{obj.target}/change/'}
+        route={'group_message':f'/admin/market/buddygroupmessage/{obj.target}/change/','item':f'/admin/market/item/{obj.target}/change/','user':f'/people/{obj.target}/','order':f'/admin/market/order/{obj.target}/change/','buddy':f'/admin/market/buddypost/{obj.target}/change/','lostfound':f'/admin/market/lostfoundpost/{obj.target}/change/','thread':f'/admin/market/thread/{obj.target}/change/'}
         return format_html('<a href="{}">Open target</a>',route.get(obj.kind,'/admin/'))
     def has_add_permission(self,request): return False
     def has_delete_permission(self,request,obj=None): return False
@@ -79,3 +79,33 @@ class OrderAdmin(ReadOnlyAdmin):
 admin.site.register(Audit,ReadOnlyAdmin)
 admin.site.register(Review,ReadOnlyAdmin)
 admin.site.register(Survey,ReadOnlyAdmin)
+
+@admin.register(LostFoundPost)
+class LostFoundAdmin(admin.ModelAdmin):
+    list_display=['title','kind','category','owner','status','occurred_at']
+    list_filter=['kind','category','status']
+    search_fields=['title','description','location']
+    readonly_fields=['owner','title','description','kind','category','occurred_at','location','color','created']
+    fields=readonly_fields+['status']
+    def has_add_permission(self,request): return False
+    def has_delete_permission(self,request,obj=None): return False
+admin.site.register(UserBlock,ReadOnlyAdmin)
+
+class MessageInline(admin.TabularInline):
+    model=Message
+    fields=['sender','text','created']
+    readonly_fields=fields
+    extra=0
+    can_delete=False
+    def has_add_permission(self,request,obj=None): return False
+
+@admin.register(Thread)
+class ThreadAdmin(ReadOnlyAdmin):
+    list_display=['id','first','second','item','order','buddy','lostfound']
+    readonly_fields=['first','second','item','order','buddy','lostfound']
+    fields=readonly_fields
+    inlines=[MessageInline]
+
+admin.site.register(BuddyGroup,ReadOnlyAdmin)
+admin.site.register(BuddyGroupMember,ReadOnlyAdmin)
+admin.site.register(BuddyGroupMessage,ReadOnlyAdmin)

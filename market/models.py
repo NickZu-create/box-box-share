@@ -17,6 +17,12 @@ class Profile(models.Model):
     interests = models.CharField(max_length=200,blank=True)
     skills = models.CharField(max_length=200,blank=True)
     languages = models.CharField(max_length=100,blank=True)
+    university = models.CharField(max_length=120,blank=True,default='')
+    major = models.CharField(max_length=160,blank=True,default='')
+    academic_year = models.CharField(max_length=40,blank=True,default='')
+    faculty = models.CharField(max_length=160,blank=True,default='')
+    # Reserved for a future approved identity integration; never accepted by ProfileForm.
+    university_verified_at = models.DateTimeField(null=True,blank=True,editable=False)
     def __str__(self): return self.nickname
 class LoginToken(models.Model):
     email = models.EmailField()
@@ -106,6 +112,39 @@ class BuddyApplication(models.Model):
     decided = models.DateTimeField(null=True,blank=True)
     class Meta:
         constraints = [models.UniqueConstraint(fields=['post','user'],name='one_buddy_application_each')]
+class BuddyFeedback(models.Model):
+    # One bounded row per viewed/dismissed post; joining remains in BuddyApplication.
+    user = models.ForeignKey(User,on_delete=models.CASCADE)
+    post = models.ForeignKey(BuddyPost,on_delete=models.CASCADE)
+    dismissed = models.BooleanField(default=False)
+    viewed_at = models.DateTimeField(auto_now=True)
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['user','post'],name='one_buddy_feedback_each')]
+LOSTFOUND_KINDS = [('found','撿到物品 / Found an item'),('lost','丟失物品 / Lost an item')]
+LOSTFOUND_CATEGORIES = [('phones','手機 / Phones'),('electronics','電子配件 / Electronics'),('wallets','錢包與現金 / Wallets and cash'),('cards','證件與卡片 / IDs and cards'),('keys','鑰匙 / Keys'),('bags','袋與背包 / Bags'),('clothing','衣物 / Clothing'),('books','書籍與文具 / Books and stationery'),('jewellery','首飾與手錶 / Jewellery and watches'),('sports','運動用品 / Sports gear'),('bottles','水樽與餐具 / Bottles and lunchware'),('other','其他 / Other')]
+class LostFoundPost(models.Model):
+    owner = models.ForeignKey(User,on_delete=models.CASCADE,related_name='lostfound_posts')
+    kind = models.CharField(max_length=10,choices=LOSTFOUND_KINDS)
+    category = models.CharField(max_length=20,choices=LOSTFOUND_CATEGORIES)
+    title = models.CharField(max_length=100)
+    description = models.TextField(max_length=3000)
+    occurred_at = models.DateTimeField()
+    location = models.CharField(max_length=160)
+    color = models.CharField(max_length=60,blank=True)
+    photo = models.ImageField(upload_to='lostfound/',blank=True)
+    status = models.CharField(max_length=12,choices=[('open','尋找中 / Open'),('resolved','已找回或交還 / Reunited')],default='open')
+    created = models.DateTimeField(auto_now_add=True)
+    class Meta:
+        indexes = [models.Index(fields=['kind','status','occurred_at']),models.Index(fields=['category','occurred_at'])]
+    def __str__(self): return self.title
+
+class UserBlock(models.Model):
+    blocker = models.ForeignKey(User,on_delete=models.CASCADE,related_name='blocks_sent')
+    blocked = models.ForeignKey(User,on_delete=models.CASCADE,related_name='blocks_received')
+    created = models.DateTimeField(auto_now_add=True)
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['blocker','blocked'],name='one_user_block_each'),models.CheckConstraint(condition=~Q(blocker=F('blocked')),name='no_self_user_block')]
+
 class Order(models.Model):
     STATES = [('pending','待確認 / Pending'),('accepted','已接受 / Accepted'),('active','借用中 / On loan'),('return_pending','歸還待確認 / Return pending'),('completed','已完成 / Completed'),('cancelled','已取消 / Cancelled'),('disputed','糾紛中 / Disputed')]
     LOCKED = ['accepted','active','return_pending','disputed']
@@ -154,11 +193,31 @@ class Thread(models.Model):
     order = models.OneToOneField(Order,on_delete=models.CASCADE,null=True,blank=True)
     # Host <-> accepted applicant. A thread with no item, order or buddy post is a chat between friends.
     buddy = models.ForeignKey(BuddyPost,on_delete=models.CASCADE,null=True,blank=True,related_name='threads')
+    lostfound = models.ForeignKey(LostFoundPost,on_delete=models.CASCADE,null=True,blank=True,related_name='threads')
     first = models.ForeignKey(User,on_delete=models.CASCADE,related_name='threads_first')
     second = models.ForeignKey(User,on_delete=models.CASCADE,related_name='threads_second')
 class Message(models.Model):
     thread = models.ForeignKey(Thread,on_delete=models.CASCADE,related_name='messages')
     sender = models.ForeignKey(User,on_delete=models.CASCADE)
+    text = models.TextField(max_length=2000)
+    created = models.DateTimeField(auto_now_add=True)
+class BuddyGroup(models.Model):
+    post = models.OneToOneField(BuddyPost,on_delete=models.CASCADE,related_name='group_chat')
+    created = models.DateTimeField(auto_now_add=True)
+
+class BuddyGroupMember(models.Model):
+    group = models.ForeignKey(BuddyGroup,on_delete=models.CASCADE,related_name='memberships')
+    user = models.ForeignKey(User,on_delete=models.CASCADE,related_name='buddy_group_memberships')
+    joined_at = models.DateTimeField(default=timezone.now)
+    left_at = models.DateTimeField(null=True,blank=True)
+    # Snapshot under the post lock; repeat join cannot move this boundary backwards.
+    history_after = models.PositiveBigIntegerField(default=0)
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['group','user'],name='one_buddy_group_member_each')]
+
+class BuddyGroupMessage(models.Model):
+    group = models.ForeignKey(BuddyGroup,on_delete=models.CASCADE,related_name='messages')
+    sender = models.ForeignKey(User,on_delete=models.PROTECT)
     text = models.TextField(max_length=2000)
     created = models.DateTimeField(auto_now_add=True)
 class Friendship(models.Model):
@@ -194,7 +253,7 @@ class Survey(models.Model):
         constraints = [models.UniqueConstraint(fields=['order'],name='one_survey_each')]
 class Report(models.Model):
     reporter = models.ForeignKey(User,on_delete=models.PROTECT)
-    kind = models.CharField(max_length=20,choices=[('item','物品 / Item'),('user','用戶 / User'),('order','訂單 / Order'),('buddy','Buddy 招募 / Buddy post')])
+    kind = models.CharField(max_length=20,choices=[('item','物品 / Item'),('user','用戶 / User'),('order','訂單 / Order'),('buddy','Buddy 招募 / Buddy post'),('lostfound','失物招領 / Lost and found'),('thread','對話騷擾 / Conversation harassment'),('group_message','群聊訊息 / Group message')])
     target = models.PositiveBigIntegerField()
     reason = models.TextField(max_length=2000)
     resolved = models.BooleanField(default=False)

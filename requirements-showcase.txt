@@ -1,0 +1,4 @@
+# Backend runtime plus the static showcase builder. Python 3.12 recommended.
+-r requirements.lock
+beautifulsoup4==4.15.0
+soupsieve==3.0.4

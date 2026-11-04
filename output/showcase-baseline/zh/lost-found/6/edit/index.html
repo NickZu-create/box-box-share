@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+
+<html lang="zh-Hant"><head><meta charset="utf-8"/><meta content="width=device-width,initial-scale=1" name="viewport"/><link href="/static/market/brand-logo-cityu-colors.png" rel="icon" type="image/png"/><link href="/static/market/brand-logo-cityu-colors.png" rel="apple-touch-icon"/><meta content="#d2234a" name="theme-color"/><meta content="Box Box Share: item lending and borrowing for the CityUHK community." name="description"/><title>發布失物招領 · Box Box Share</title><link href="/static/market/style.css" rel="stylesheet"/><link href="/showcase.css" rel="stylesheet"/><script defer="" src="/showcase.js"></script></head>
+<body data-language="zh" data-notice="僅展示示例流程，不會發送訊息、儲存修改或建立交易。" data-route="/lost-found/6/edit/"><div class="brand-bar"></div><header><a aria-label="Box Box Share home" class="brand" href="/zh/"><img alt="" class="brand-logo" height="48" src="/static/market/brand-logo-cityu-colors.png" width="48"/><span class="brand-name">Box Box Share<small>FOR THE CITYUHK COMMUNITY</small></span></a><nav aria-label="Main navigation"><a class="" href="/zh/">探索物品</a><a class="" href="/zh/seeking/">尋物廣場</a><a class="selected" href="/zh/lost-found/">失物招領</a><a class="" href="/zh/buddy/">Buddy</a><a class="" href="/zh/my/">我的借用</a><a class="" href="/zh/messages/">訊息</a><a class="nav-impact" href="/zh/impact/">減碳成效</a></nav><div class="header-actions"><details class="lang-menu"><summary aria-label="Language / 語言 / 语言" class="lang">繁 ▾</summary><form action="#" data-demo-language="true" id="lang-form" method="get"><button name="lang" value="en">English</button><button aria-current="true" name="lang" value="zh">繁體中文</button><button name="lang" value="hans">简体中文</button></form></details><a aria-label="個人資料" class="avatar small" href="/zh/profile/">D</a><a aria-label="發布物品" class="button compact" href="/zh/items/new/">＋<span class="publish-label"> 發布物品</span></a></div></header>
+<div class="showcase-banner"><strong>展示版</strong><span>所有成員、訊息與訂單均為示例。僅供瀏覽，不會發送訊息或建立交易。</span><a href="/zh/my/">示例訂單</a><a href="/zh/lost-found/">失物招領</a></div>
+<main>
+<link href="/static/market/lostfound.css" rel="stylesheet"/>
+<section class="page narrow lf-page">
+<a class="breadcrumb" href="/zh/lost-found/6/">← 失物招領</a>
+<h1>編輯失物招領資訊</h1>
+<p class="hint">寫清楚物品外觀、發生時間和地點，讓對方更容易找到你。發布後可透過 Messages 私下聯絡。</p>
+<form action="#" class="panel form-stack" data-demo-action="true" enctype="multipart/form-data" method="get">
+
+<div class="notice lf-form-notice">保留一項特徵供私下認領核對。照片請遮住完整姓名、證件號碼、卡號和門禁資料；不要公開聯絡電話或郵箱。</div>
+<p>
+<label for="id_kind">發布類型：</label>
+<select id="id_kind" name="kind" required="">
+<option value="">---------</option>
+<option value="found">撿到物品</option>
+<option selected="" value="lost">丟失物品</option>
+</select>
+</p>
+<p>
+<label for="id_category">物品分類：</label>
+<select id="id_category" name="category" required="">
+<option value="">---------</option>
+<option value="phones">手機</option>
+<option value="electronics">電子配件</option>
+<option value="wallets">錢包與現金</option>
+<option value="cards">證件與卡片</option>
+<option value="keys">鑰匙</option>
+<option value="bags">袋與背包</option>
+<option value="clothing">衣物</option>
+<option selected="" value="books">書籍與文具</option>
+<option value="jewellery">首飾與手錶</option>
+<option value="sports">運動用品</option>
+<option value="bottles">水樽與餐具</option>
+<option value="other">其他</option>
+</select>
+</p>
+<p>
+<label for="id_title">物品名稱：</label>
+<input id="id_title" maxlength="100" name="title" required="" type="text" value="Notebook with circuit notes / 电路笔记本"/>
+</p>
+<p>
+<label for="id_description">物品特徵與情況：</label>
+<textarea aria-describedby="id_description_helptext" cols="40" id="id_description" maxlength="3000" name="description" required="" rows="4">
+Lost a notebook used for circuit revision. Please message if found. 示例遗失。</textarea>
+<span class="helptext" id="id_description_helptext">請勿公開證件號碼、完整姓名、電話或住址；保留部分特徵讓對方核對。; keep some details private for verification.</span>
+</p>
+<p>
+<label for="id_occurred_at">丟失或拾到時間：</label>
+<input id="id_occurred_at" name="occurred_at" required="" type="datetime-local" value="2026-10-31T17:35"/>
+</p>
+<p>
+<label for="id_location">丟失或拾到地點：</label>
+<input id="id_location" maxlength="160" name="location" required="" type="text" value="Library / 图书馆"/>
+</p>
+<p>
+<label for="id_color">顏色（選填）：</label>
+<input id="id_color" maxlength="60" name="color" type="text" value="Navy / 藏蓝色"/>
+</p>
+<p>
+<label for="id_photo">照片（選填）：</label>
+<input accept="image/jpeg,image/png,image/webp" aria-describedby="id_photo_helptext" disabled="disabled" id="id_photo" name="photo" type="file"/>
+<span class="helptext" id="id_photo_helptext">上限 5 MB；請遮蓋證件和個人資料。; cover identity and personal details.</span>
+</p>
+<p>
+<label for="id_status">狀態：</label>
+<select id="id_status" name="status">
+<option selected="" value="open">尋找中</option>
+<option value="resolved">已找回或交還</option>
+</select>
+</p>
+<p class="hint">所有時間均為香港時間 · Asia/Hong_Kong · 照片選填，最多 5 MB；僅接受 JPEG、PNG、WebP。</p>
+<div class="actions"><button class="button">儲存 →</button><a class="text-link" href="/zh/lost-found/">返回列表</a></div>
+</form>
+</section>
+</main>
+<footer><div><a class="brand footer-brand" href="/zh/"><img alt="" class="brand-logo" height="36" src="/static/market/brand-logo-cityu-colors.png" width="36"/><span>Box Box Share</span></a><p>由 Box Box 營運，專為 CityUHK 社群設計。並非 CityUHK 官方平台，亦不代表學校認可。</p><small>郵箱驗證僅確認郵箱存取權，不代表在讀學籍核實。</small></div><div><a href="/zh/rules/">社群守則</a> · <a href="/zh/impact/">減碳成效</a><p>所有時間均為香港時間 · Asia/Hong_Kong</p><small>HKD · 線下付款 · 雙方確認</small></div></footer>
+
+<div class="mobile-nav"><a href="/zh/">⌂<span>探索物品</span></a><a href="/zh/seeking/">◎<span>尋物廣場</span></a><a href="/zh/lost-found/">⌕<span>失物招領</span></a><a href="/zh/buddy/">✦<span>Buddy</span></a><a href="/zh/items/new/">＋<span>發布物品</span></a><a href="/zh/my/">↔<span>我的借用</span></a><a href="/zh/messages/">☏<span>訊息</span></a></div>
+<div hidden="" id="showcase-notice" role="status"></div></body></html>

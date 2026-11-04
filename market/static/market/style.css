@@ -26,3 +26,26 @@ nav{min-width:0;overflow-x:auto;scrollbar-width:none}nav::-webkit-scrollbar{disp
 .list-row .status{white-space:nowrap;flex-shrink:0}
 /* Tablets: six nav links fit by showing only the brand mark and a ＋ button (its label stays for screen readers). */
 @media(min-width:701px) and (max-width:1060px){.brand-name{display:none}nav{gap:14px;font-size:13px}.header-actions{gap:12px}.header-actions .compact{width:42px;height:42px;padding:0;font-size:20px}.header-actions .compact .publish-label{display:none}}
+
+/* Independent Box Box mark: crisp artwork, harmonized with the original red palette. */
+.brand-logo{display:block;width:48px;height:48px;object-fit:contain;flex-shrink:0;border-radius:0;image-rendering:auto}
+.footer-brand .brand-logo{width:36px;height:36px}
+.hint,.panel .hint{font-size:13px;line-height:1.75}
+@media(max-width:700px){header .brand-logo{width:42px;height:42px}.form-stack .helptext{font-size:12px}}
+
+/* Contact controls and seven-section navigation. */
+.conversation-tools{display:flex;align-items:start;gap:16px;flex-wrap:wrap;margin:16px 0 22px}.safety-control summary{cursor:pointer}.safety-confirm{margin-top:10px;max-width:420px}.safety-confirm p{margin:0 0 12px}.safety-control{font-size:13px}
+@media(min-width:701px){header nav{gap:18px;font-size:13px}}
+@media(min-width:701px) and (max-width:1180px){header .brand-name{display:none}header nav{gap:12px;font-size:12.5px}header .header-actions{gap:12px}header .header-actions .compact{width:42px;height:42px;padding:0;font-size:20px}header .publish-label{display:none}}
+@media(max-width:700px){.mobile-nav{justify-content:flex-start;overflow-x:auto;gap:0}.mobile-nav a{flex:1 0 58px;min-width:58px}.mobile-nav span{font-size:8px}.conversation-tools{gap:12px}}
+
+/* Impact is a separate, lower-priority destination after Messages. */
+header nav .nav-impact{margin-left:34px;padding-left:24px;border-left:1px solid var(--line);color:var(--muted)}
+header nav .nav-impact.selected{color:var(--green)}
+@media(min-width:701px) and (max-width:1180px){header nav .nav-impact{margin-left:22px;padding-left:18px}}
+
+/* Optional Buddy refinements keep the existing primary search row. */
+.buddy-refinements{grid-column:1/-1;display:flex;gap:12px;flex-wrap:wrap}.buddy-refinements>input,.buddy-refinements>select{flex:1 1 180px;min-width:0;max-width:100%}
+
+/* Buddy group chat reuses existing panels, bubbles and composer. */
+.buddy-group-controls{margin:20px 0}.buddy-group-controls .hint{margin:12px 0 0}.group-chat-layout{display:grid;grid-template-columns:260px minmax(0,1fr);gap:20px;align-items:start}.group-sidebar,.group-conversation{min-width:0}.group-chat-header{display:block;position:static;padding:0;border-bottom:1px solid var(--line);margin:0 0 15px}.group-chat-header h1{font-size:24px;margin:10px 0}.group-roster{margin:12px 0;font-size:13px}.group-roster summary{cursor:pointer;min-height:36px}.group-current{background:#fae8ef;color:var(--green)}.group-message-list{max-height:55dvh;overflow-y:auto;min-height:160px;padding:16px 2px;display:flex;flex-direction:column;gap:14px}.group-message-list .bubble{align-self:flex-start}.group-message-list .mine{align-self:flex-end}.group-report{display:inline-block;font-size:11px;color:inherit;opacity:.8;min-height:28px;padding-top:8px}.group-composer{margin-top:16px}.group-composer textarea{min-width:0;flex:1;font-size:16px}.group-refresh{margin:12px 0 0}.group-history-note{font-size:12px}@media(max-width:700px){.group-chat-layout{grid-template-columns:1fr}.group-sidebar{display:none}.group-conversation{padding:16px}.group-chat-header h1{font-size:21px}.group-message-list{max-height:none}.group-report{min-height:36px}}

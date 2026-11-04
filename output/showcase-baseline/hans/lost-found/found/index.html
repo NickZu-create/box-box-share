@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+
+<html lang="zh-Hans"><head><meta charset="utf-8"/><meta content="width=device-width,initial-scale=1" name="viewport"/><link href="/static/market/brand-logo-cityu-colors.png" rel="icon" type="image/png"/><link href="/static/market/brand-logo-cityu-colors.png" rel="apple-touch-icon"/><meta content="#d2234a" name="theme-color"/><meta content="Box Box Share: item lending and borrowing for the CityUHK community." name="description"/><title>失物招领 · Box Box Share</title><link href="/static/market/style.css" rel="stylesheet"/><link href="/showcase.css" rel="stylesheet"/><script defer="" src="/showcase.js"></script></head>
+<body data-language="hans" data-notice="仅展示示例流程，不会发送消息、保存修改或创建交易。" data-route="/lost-found/found/"><div class="brand-bar"></div><header><a aria-label="Box Box Share home" class="brand" href="/hans/"><img alt="" class="brand-logo" height="48" src="/static/market/brand-logo-cityu-colors.png" width="48"/><span class="brand-name">Box Box Share<small>FOR THE CITYUHK COMMUNITY</small></span></a><nav aria-label="Main navigation"><a class="" href="/hans/">探索物品</a><a class="" href="/hans/seeking/">寻物广场</a><a class="selected" href="/hans/lost-found/">失物招领</a><a class="" href="/hans/buddy/">Buddy</a><a class="" href="/hans/my/">我的借用</a><a class="" href="/hans/messages/">消息</a><a class="nav-impact" href="/hans/impact/">减碳成效</a></nav><div class="header-actions"><details class="lang-menu"><summary aria-label="Language / 語言 / 语言" class="lang">简 ▾</summary><form action="#" data-demo-language="true" id="lang-form" method="get"><button name="lang" value="en">English</button><button name="lang" value="zh">繁體中文</button><button aria-current="true" name="lang" value="hans">简体中文</button></form></details><a aria-label="个人资料" class="avatar small" href="/hans/profile/">D</a><a aria-label="发布物品" class="button compact" href="/hans/items/new/">＋<span class="publish-label"> 发布物品</span></a></div></header>
+<div class="showcase-banner"><strong>展示版</strong><span>所有成员、消息与订单均为示例。仅供浏览，不会发送消息或创建交易。</span><a href="/hans/my/">示例订单</a><a href="/hans/lost-found/">失物招领</a></div>
+<main>
+<link href="/static/market/lostfound.css" rel="stylesheet"/>
+<section class="page lf-page">
+<div class="lf-masthead">
+<div><span class="eyebrow green">LOST &amp; FOUND</span><h1>让遗失的好物，回到主人身边。</h1><p class="hint">先选「拾获物品」或「遗失物品」，再用名称、分类或地点寻找。</p></div>
+<a class="text-link" href="/hans/messages/">我的联络消息 →</a>
+</div>
+<div aria-label="失物招领分区" class="lf-sections">
+<div class="lf-section is-selected">
+<a aria-current="page" class="lf-section-link" href="/hans/lost-found/found/"><span aria-hidden="true" class="lf-section-symbol">↗</span><span><strong>拾获物品</strong><small>捡到了东西，帮它找到主人。</small></span></a>
+<a class="button secondary compact" href="/hans/lost-found/new/found/">＋ 发布拾获</a>
+</div>
+<div class="lf-section">
+<a class="lf-section-link" href="/hans/lost-found/lost/"><span aria-hidden="true" class="lf-section-symbol">⌕</span><span><strong>遗失物品</strong><small>不见了东西，让大家一起留意。</small></span></a>
+<a class="button secondary compact" href="/hans/lost-found/new/lost/">＋ 发布遗失</a>
+</div>
+</div>
+<form action="#" class="panel lf-search" data-demo-search="true" method="get">
+
+<div class="lf-search-primary">
+<p class="lf-keyword"><label for="lf-q">物品关键词</label><input id="lf-q" maxlength="100" name="q" placeholder="例如：黑色耳机、计算机、钥匙" value=""/></p>
+<p><label for="lf-category">物品分类</label><select id="lf-category" name="category"><option value="">全部分类</option><option value="phones">手机</option><option value="electronics">电子配件</option><option value="wallets">钱包与现金</option><option value="cards">证件与卡片</option><option value="keys">钥匙</option><option value="bags">袋与背包</option><option value="clothing">衣物</option><option value="books">书籍与文具</option><option value="jewellery">首饰与手表</option><option value="sports">运动用品</option><option value="bottles">水樽与餐具</option><option value="other">其他</option></select></p>
+<p><label for="lf-location">地点</label><input id="lf-location" maxlength="160" name="location" placeholder="例如：图书馆、AC1、宿舍" value=""/></p>
+<button class="button" type="submit">搜索 →</button>
+</div>
+<details class="lf-more">
+<summary>更多筛选：日期、处理状态</summary>
+<div class="lf-search-secondary">
+<p><label for="lf-since">发生日期由</label><input id="lf-since" name="since" type="date" value=""/></p>
+<p><label for="lf-status">处理状态</label><select id="lf-status" name="status"><option selected="" value="open">仍在寻找</option><option value="resolved">已找回／已归还</option><option value="all">全部状态</option></select></p>
+<a class="text-link" href="/hans/lost-found/found/">清除筛选</a>
+</div>
+</details>
+</form>
+<div class="lf-result-heading"><h2>等待主人认领</h2><span class="hint">目前显示 4 则信息</span></div>
+<div class="lf-grid">
+<a class="wanted-card lf-card" data-category="bottles" data-kind="found" data-location="Sports centre / 体育中心" data-start="2026-10-31T09:35:00+00:00" data-state="open" href="/hans/lost-found/5/">
+<div class="lf-card-top"><span class="pill">捡到物品</span><span class="status">寻找中</span></div>
+<span class="lf-category">水樽与餐具</span><h3>Green water bottle / 绿色水瓶</h3><p class="lf-description">Found after a game at the sports centre. 示例拾获。</p>
+<dl class="lf-card-facts"><dt>拾获时间</dt><dd>10/31 17:35</dd><dt>地点</dt><dd>Sports centre / 体育中心</dd><dt>颜色</dt><dd>Green / 绿色</dd></dl>
+<div class="card-bottom"><span class="avatar tiny">A</span>Alex<span aria-hidden="true" class="arrow">→</span></div>
+</a>
+<a class="wanted-card lf-card" data-category="cards" data-kind="found" data-location="Residence lobby / 宿舍大堂" data-start="2026-10-31T09:35:00+00:00" data-state="open" href="/hans/lost-found/4/">
+<div class="lf-card-top"><span class="pill">捡到物品</span><span class="status">寻找中</span></div>
+<span class="lf-category">证件与卡片</span><h3>Student card / 学生证</h3><p class="lf-description">A card was found in a red holder. Personal identifiers are not published. 示例拾获。</p>
+<dl class="lf-card-facts"><dt>拾获时间</dt><dd>10/31 17:35</dd><dt>地点</dt><dd>Residence lobby / 宿舍大堂</dd><dt>颜色</dt><dd>Red holder / 红色卡套</dd></dl>
+<div class="card-bottom"><span class="avatar tiny">J</span>Jamie<span aria-hidden="true" class="arrow">→</span></div>
+</a>
+<a class="wanted-card lf-card" data-category="electronics" data-kind="found" data-location="Library / 图书馆" data-start="2026-10-31T09:35:00+00:00" data-state="open" href="/hans/lost-found/2/">
+<div class="lf-card-top"><span class="pill">捡到物品</span><span class="status">寻找中</span></div>
+<span class="lf-category">电子配件</span><h3>Black earbuds case / 黑色耳机盒</h3><p class="lf-description">Found beside a reading desk. Message with a detail only the owner would know. 示例拾获。</p>
+<dl class="lf-card-facts"><dt>拾获时间</dt><dd>10/31 17:35</dd><dt>地点</dt><dd>Library / 图书馆</dd><dt>颜色</dt><dd>Black / 黑色</dd></dl>
+<div class="card-bottom"><span class="avatar tiny">J</span>Jamie<span aria-hidden="true" class="arrow">→</span></div>
+</a>
+<a class="wanted-card lf-card" data-category="keys" data-kind="found" data-location="AC1 entrance / AC1入口" data-start="2026-10-31T09:35:00+00:00" data-state="open" href="/hans/lost-found/1/">
+<div class="lf-card-top"><span class="pill">捡到物品</span><span class="status">寻找中</span></div>
+<span class="lf-category">钥匙</span><h3>Keys with a blue tag / 蓝色挂件钥匙</h3><p class="lf-description">Found near the entrance. Describe the keyring privately to claim. 示例拾获。</p>
+<dl class="lf-card-facts"><dt>拾获时间</dt><dd>10/31 17:35</dd><dt>地点</dt><dd>AC1 entrance / AC1入口</dd><dt>颜色</dt><dd>Blue / 蓝色</dd></dl>
+<div class="card-bottom"><span class="avatar tiny">D</span>Demo · You<span aria-hidden="true" class="arrow">→</span></div>
+</a>
+</div>
+<p class="notice lf-claim-note">认领前，请在私人消息核对未公开的物品特征。不要公开完整证件号码、门禁资料或其他敏感信息。</p>
+</section>
+</main>
+<footer><div><a class="brand footer-brand" href="/hans/"><img alt="" class="brand-logo" height="36" src="/static/market/brand-logo-cityu-colors.png" width="36"/><span>Box Box Share</span></a><p>由 Box Box 营运，专为 CityUHK 社区设计。并非 CityUHK 官方平台，亦不代表学校认可。</p><small>邮箱验证仅确认邮箱存取权，不代表在读学籍核实。</small></div><div><a href="/hans/rules/">社区守则</a> · <a href="/hans/impact/">减碳成效</a><p>所有时间均为香港时间 · Asia/Hong_Kong</p><small>HKD · 线下付款 · 双方确认</small></div></footer>
+
+<div class="mobile-nav"><a href="/hans/">⌂<span>探索物品</span></a><a href="/hans/seeking/">◎<span>寻物广场</span></a><a href="/hans/lost-found/">⌕<span>失物招领</span></a><a href="/hans/buddy/">✦<span>Buddy</span></a><a href="/hans/items/new/">＋<span>发布物品</span></a><a href="/hans/my/">↔<span>我的借用</span></a><a href="/hans/messages/">☏<span>消息</span></a></div>
+<div hidden="" id="showcase-notice" role="status"></div></body></html>

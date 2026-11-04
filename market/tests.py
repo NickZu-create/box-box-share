@@ -443,7 +443,7 @@ class Buddy(TestCase):
                     self.assertEqual(client.get(url).status_code,200,(url,lang))
             self.assertEqual(self.ch.get(f'/buddy/{post.pk}/edit/').status_code,200)
         nav=self.ca.get('/').content.decode().split('<nav')[1].split('</nav>')[0]
-        order=[nav.index(f'href="{h}"') for h in ('/','/?tab=wanted','/impact/','/buddy/','/my/','/messages/')]
+        order=[nav.index(f'href="{h}"') for h in ('/','/?tab=wanted','/lost-found/','/buddy/','/my/','/messages/','/impact/')]
         self.assertEqual(order,sorted(order))
 
 class BuddyRace(TransactionTestCase):
@@ -554,7 +554,7 @@ class Languages(TestCase):
 class MigrationKeepsData(TransactionTestCase):
     def test_0005_preserves_users_items_orders_and_messages(self):
         executor=MigrationExecutor(connection)
-        old=[('market','0004_stored_file')];new=[('market','0005_buddy_friends_profile')]
+        old=[('market','0004_stored_file')];new=executor.loader.graph.leaf_nodes('market')
         executor.migrate(old);apps=executor.loader.project_state(old).apps
         U=apps.get_model('auth','User');P=apps.get_model('market','Profile');I=apps.get_model('market','Item');O=apps.get_model('market','Order');T=apps.get_model('market','Thread');M=apps.get_model('market','Message')
         lender=U.objects.create(username='old@my.cityu.edu.hk',email='old@my.cityu.edu.hk');borrower=U.objects.create(username='b@my.cityu.edu.hk',email='b@my.cityu.edu.hk')

@@ -1,0 +1,6 @@
+{% if student.university or student.major or student.academic_year or student.faculty %}<dl class="facts">
+{% if student.university %}<dt>{% tr '大學' 'University' %}</dt><dd>{{ student.university }}</dd>{% endif %}
+{% if student.major %}<dt>{% tr '主修或課程' 'Major or Programme' %}</dt><dd>{{ student.major }}</dd>{% endif %}
+{% if student.academic_year %}<dt>{% tr '年級' 'Academic year' %}</dt><dd>{{ student.academic_year }}</dd>{% endif %}
+{% if student.faculty %}<dt>{% tr '學院' 'Faculty or College' %}</dt><dd>{{ student.faculty }}</dd>{% endif %}
+</dl><p class="hint">{% tr '學生資料由成員自行填寫。' 'Student details are self-reported.' %}</p>{% endif %}

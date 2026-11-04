@@ -110,6 +110,8 @@ def terms_fingerprint(item): return hashlib.sha256(json.dumps(item_terms(item),s
 @transaction.atomic
 def apply(item_id,user,start,end,expected=None):
     item=Item.objects.select_for_update().get(pk=item_id)
+    from .social import is_blocked
+    if is_blocked(user,item.owner): raise PermissionDenied()
     if item.owner.profile.restricted or not item.owner.is_active: raise ValidationError('Lender unavailable / 物主帳號受限')
     if not user.profile.verified or user.profile.restricted: raise PermissionDenied()
     valid_email(user.email)

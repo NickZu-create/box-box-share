@@ -2,7 +2,7 @@
 
 面向 CityUHK 社群、學生營運的物品租借／求借平台第一版。不是學校官方平台，不代表學校認可。學校郵箱驗證只確認郵箱存取權，不代表在讀學籍已核實。
 
-**交付狀態：本機可運行，74 項自動化測試通過；未部署到公網，未接通真實 SMTP。** 香港移動網絡、校園網絡及真實學校郵箱投遞均待驗證。完整詳情見 [測試報告](TEST-RESULTS.md)、[功能清單](FEATURES.md) 和 [部署說明](DEPLOYMENT.md)。免費試用部署（Render + Neon + Resend）見 [DEPLOY-RENDER.md](DEPLOY-RENDER.md)。
+**最新協作快照：本機檢查通過 114 項 Django 測試與 14 項演示規則測試。** 目前分支包含真實 Django 功能及合成靜態展示；兩者功能邊界、Windows/macOS 啟動方法和協作方式見 [COLLABORATION.md](COLLABORATION.md)。本次 GitHub 上傳未部署網站，也未變更 Render 或線上資料。手機真機、校園網絡及真實學校郵箱投遞仍待驗證。較早的 [測試報告](TEST-RESULTS.md) 和 [功能清單](FEATURES.md) 保留作歷史記錄；最新版介面檢查見 [experience review](output/experience-review/design-qa.md)。
 
 ## 快速運行
 
@@ -61,7 +61,7 @@ python3.12 -m venv .venv
 
 ## Buddy、好友與介面語言
 
-導航順序：Explore → Seeking → Impact → Buddy → My activity → Messages；個人資料經頭像進入。
+桌面導航包含 Explore、Seeking、Lost & Found、Buddy、My activity、Messages，Impact 以額外間距分隔；手機底部為 Explore、Seeking、Buddy、Messages、More，次要目的地在 More，個人資料亦可經頭像進入。
 
 - **Buddy**（`/buddy/`）分「找搭子」（學習、運動、吃飯、校園活動）與「找隊友」（課程項目、比賽、Hackathon、創業）。發布、編輯、關閉／重新開放；申請、撤回、退出；發起人接受、婉拒、移出。**所需人數一律不含發起人**，詳情、申請及審批頁面都這樣標示。狀態分招募中、已滿、已關閉（發起人關閉）、已結束（結束時間或開始時間已過）。接受申請時鎖定招募資料列，同時接受也不會超員。關閉時仍在等待的申請自動婉拒並通知。
 - **對話**：申請獲接受後，在 `Thread.buddy` 建立發起人與成員的一對一對話；成員退出或被移出後對話保留但不能再發訊息。物品、訂單對話不變。

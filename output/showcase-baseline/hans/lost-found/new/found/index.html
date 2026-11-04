@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+
+<html lang="zh-Hans"><head><meta charset="utf-8"/><meta content="width=device-width,initial-scale=1" name="viewport"/><link href="/static/market/brand-logo-cityu-colors.png" rel="icon" type="image/png"/><link href="/static/market/brand-logo-cityu-colors.png" rel="apple-touch-icon"/><meta content="#d2234a" name="theme-color"/><meta content="Box Box Share: item lending and borrowing for the CityUHK community." name="description"/><title>发布失物招领 · Box Box Share</title><link href="/static/market/style.css" rel="stylesheet"/><link href="/showcase.css" rel="stylesheet"/><script defer="" src="/showcase.js"></script></head>
+<body data-language="hans" data-notice="仅展示示例流程，不会发送消息、保存修改或创建交易。" data-route="/lost-found/new/found/"><div class="brand-bar"></div><header><a aria-label="Box Box Share home" class="brand" href="/hans/"><img alt="" class="brand-logo" height="48" src="/static/market/brand-logo-cityu-colors.png" width="48"/><span class="brand-name">Box Box Share<small>FOR THE CITYUHK COMMUNITY</small></span></a><nav aria-label="Main navigation"><a class="" href="/hans/">探索物品</a><a class="" href="/hans/seeking/">寻物广场</a><a class="selected" href="/hans/lost-found/">失物招领</a><a class="" href="/hans/buddy/">Buddy</a><a class="" href="/hans/my/">我的借用</a><a class="" href="/hans/messages/">消息</a><a class="nav-impact" href="/hans/impact/">减碳成效</a></nav><div class="header-actions"><details class="lang-menu"><summary aria-label="Language / 語言 / 语言" class="lang">简 ▾</summary><form action="#" data-demo-language="true" id="lang-form" method="get"><button name="lang" value="en">English</button><button name="lang" value="zh">繁體中文</button><button aria-current="true" name="lang" value="hans">简体中文</button></form></details><a aria-label="个人资料" class="avatar small" href="/hans/profile/">D</a><a aria-label="发布物品" class="button compact" href="/hans/items/new/">＋<span class="publish-label"> 发布物品</span></a></div></header>
+<div class="showcase-banner"><strong>展示版</strong><span>所有成员、消息与订单均为示例。仅供浏览，不会发送消息或创建交易。</span><a href="/hans/my/">示例订单</a><a href="/hans/lost-found/">失物招领</a></div>
+<main>
+<link href="/static/market/lostfound.css" rel="stylesheet"/>
+<section class="page narrow lf-page">
+<a class="breadcrumb" href="/hans/lost-found/found/">← 失物招领</a>
+<h1>发布拾获物品</h1>
+<p class="hint">写清楚物品外观、发生时间和地点，让对方更容易找到你。发布后可通过 Messages 私下联络。</p>
+<form action="#" class="panel form-stack" data-demo-action="true" enctype="multipart/form-data" method="get">
+
+<div class="notice lf-form-notice">保留一项特征供私下认领核对。照片请遮住完整姓名、证件号码、卡号和门禁资料；不要公开联络电话或邮箱。</div>
+<p>
+<label for="id_kind">发布类型:</label>
+<select id="id_kind" name="kind" required="">
+<option value="">---------</option>
+<option selected="" value="found">捡到物品</option>
+<option value="lost">丢失物品</option>
+</select>
+</p>
+<p>
+<label for="id_category">物品分类:</label>
+<select id="id_category" name="category" required="">
+<option selected="" value="">---------</option>
+<option value="phones">手机</option>
+<option value="electronics">电子配件</option>
+<option value="wallets">钱包与现金</option>
+<option value="cards">证件与卡片</option>
+<option value="keys">钥匙</option>
+<option value="bags">袋与背包</option>
+<option value="clothing">衣物</option>
+<option value="books">书籍与文具</option>
+<option value="jewellery">首饰与手表</option>
+<option value="sports">运动用品</option>
+<option value="bottles">水樽与餐具</option>
+<option value="other">其他</option>
+</select>
+</p>
+<p>
+<label for="id_title">物品名称:</label>
+<input id="id_title" maxlength="100" name="title" required="" type="text"/>
+</p>
+<p>
+<label for="id_description">物品特征与情况:</label>
+<textarea aria-describedby="id_description_helptext" cols="40" id="id_description" maxlength="3000" name="description" required="" rows="4">
+</textarea>
+<span class="helptext" id="id_description_helptext">请勿公开证件号码、完整姓名、电话或住址；保留部分特征让对方核对。; keep some details private for verification.</span>
+</p>
+<p>
+<label for="id_occurred_at">丢失或拾到时间:</label>
+<input id="id_occurred_at" name="occurred_at" required="" type="datetime-local"/>
+</p>
+<p>
+<label for="id_location">丢失或拾到地点:</label>
+<input id="id_location" maxlength="160" name="location" required="" type="text"/>
+</p>
+<p>
+<label for="id_color">颜色（选填）:</label>
+<input id="id_color" maxlength="60" name="color" type="text"/>
+</p>
+<p>
+<label for="id_photo">照片（选填）:</label>
+<input accept="image/jpeg,image/png,image/webp" aria-describedby="id_photo_helptext" disabled="disabled" id="id_photo" name="photo" type="file"/>
+<span class="helptext" id="id_photo_helptext">上限 5 MB；请遮盖证件和个人资料。; cover identity and personal details.</span>
+</p>
+<p>
+<label for="id_status">状态:</label>
+<select id="id_status" name="status">
+<option selected="" value="open">寻找中</option>
+<option value="resolved">已找回或交还</option>
+</select>
+</p>
+<p class="hint">所有时间均为香港时间 · Asia/Hong_Kong · 照片选填，最多 5 MB；仅接受 JPEG、PNG、WebP。</p>
+<div class="actions"><button class="button">发布信息 →</button><a class="text-link" href="/hans/lost-found/">返回列表</a></div>
+</form>
+</section>
+</main>
+<footer><div><a class="brand footer-brand" href="/hans/"><img alt="" class="brand-logo" height="36" src="/static/market/brand-logo-cityu-colors.png" width="36"/><span>Box Box Share</span></a><p>由 Box Box 营运，专为 CityUHK 社区设计。并非 CityUHK 官方平台，亦不代表学校认可。</p><small>邮箱验证仅确认邮箱存取权，不代表在读学籍核实。</small></div><div><a href="/hans/rules/">社区守则</a> · <a href="/hans/impact/">减碳成效</a><p>所有时间均为香港时间 · Asia/Hong_Kong</p><small>HKD · 线下付款 · 双方确认</small></div></footer>
+
+<div class="mobile-nav"><a href="/hans/">⌂<span>探索物品</span></a><a href="/hans/seeking/">◎<span>寻物广场</span></a><a href="/hans/lost-found/">⌕<span>失物招领</span></a><a href="/hans/buddy/">✦<span>Buddy</span></a><a href="/hans/items/new/">＋<span>发布物品</span></a><a href="/hans/my/">↔<span>我的借用</span></a><a href="/hans/messages/">☏<span>消息</span></a></div>
+<div hidden="" id="showcase-notice" role="status"></div></body></html>

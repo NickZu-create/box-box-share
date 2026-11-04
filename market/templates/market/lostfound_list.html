@@ -1,0 +1,57 @@
+{% extends 'market/base.html' %}
+{% load static %}
+{% block title %}{% tr '失物招領' 'Lost & Found' %} · {{ t.brand }}{% endblock %}
+{% block content %}
+<link rel="stylesheet" href="{% static 'market/lostfound.css' %}">
+<section class="page lf-page">
+  <div class="lf-masthead">
+    <div><span class="eyebrow green">LOST &amp; FOUND</span><h1>{% tr '讓遺失的好物，回到主人身邊。' 'Help lost things find their way home.' %}</h1><p class="hint">{% tr '先選「拾獲物品」或「遺失物品」，再用名稱、分類或地點尋找。' 'Choose found or lost items, then search by item name, category or place.' %}</p></div>
+    <a class="text-link" href="/messages/">{% tr '我的聯絡訊息' 'My conversations' %} →</a>
+  </div>
+
+  <div class="lf-sections" aria-label="{% tr '失物招領分區' 'Lost and found sections' %}">
+    <div class="lf-section {% if request.GET.kind != 'lost' %}is-selected{% endif %}">
+      <a class="lf-section-link" href="/lost-found/?kind=found" {% if request.GET.kind != 'lost' %}aria-current="page"{% endif %}><span class="lf-section-symbol" aria-hidden="true">↗</span><span><strong>{% tr '拾獲物品' 'Found items' %}</strong><small>{% tr '撿到了東西，幫它找到主人。' 'Found something? Help its owner find it.' %}</small></span></a>
+      <a class="button secondary compact" href="/lost-found/new/?kind=found">＋ {% tr '發布拾獲' 'Post a found item' %}</a>
+    </div>
+    <div class="lf-section {% if request.GET.kind == 'lost' %}is-selected{% endif %}">
+      <a class="lf-section-link" href="/lost-found/?kind=lost" {% if request.GET.kind == 'lost' %}aria-current="page"{% endif %}><span class="lf-section-symbol" aria-hidden="true">⌕</span><span><strong>{% tr '遺失物品' 'Lost items' %}</strong><small>{% tr '不見了東西，讓大家一起留意。' 'Lost something? Let the community look out for it.' %}</small></span></a>
+      <a class="button secondary compact" href="/lost-found/new/?kind=lost">＋ {% tr '發布遺失' 'Post a lost item' %}</a>
+    </div>
+  </div>
+
+  <form class="panel lf-search" method="get" action="/lost-found/">
+    <input type="hidden" name="kind" value="{% if request.GET.kind == 'lost' %}lost{% else %}found{% endif %}">
+    <div class="lf-search-primary">
+      <p class="lf-keyword"><label for="lf-q">{% tr '物品關鍵詞' 'Item keywords' %}</label><input id="lf-q" name="q" value="{{ request.GET.q }}" maxlength="100" placeholder="{% tr '例如：黑色耳機、計算機、鑰匙' 'e.g. black earbuds, calculator, keys' %}"></p>
+      <p><label for="lf-category">{% tr '物品分類' 'Category' %}</label><select id="lf-category" name="category"><option value="">{% tr '全部分類' 'All categories' %}</option>{% for value,label in categories %}<option value="{{ value }}" {% if request.GET.category == value %}selected{% endif %}>{{ label|loc }}</option>{% endfor %}</select></p>
+      <p><label for="lf-location">{% tr '地點' 'Place' %}</label><input id="lf-location" name="location" value="{{ request.GET.location }}" maxlength="160" placeholder="{% tr '例如：圖書館、AC1、宿舍' 'e.g. library, AC1, residence' %}"></p>
+      <button class="button" type="submit">{% tr '搜尋' 'Search' %} →</button>
+    </div>
+    <details class="lf-more" {% if request.GET.since or request.GET.status and request.GET.status != 'open' %}open{% endif %}>
+      <summary>{% tr '更多篩選：日期、處理狀態' 'More filters: date and status' %}</summary>
+      <div class="lf-search-secondary">
+        <p><label for="lf-since">{% tr '發生日期由' 'Item lost or found since' %}</label><input id="lf-since" type="date" name="since" value="{{ request.GET.since }}"></p>
+        <p><label for="lf-status">{% tr '處理狀態' 'Status' %}</label><select id="lf-status" name="status"><option value="open" {% if request.GET.status == 'open' or not request.GET.status %}selected{% endif %}>{% tr '仍在尋找' 'Still looking' %}</option><option value="resolved" {% if request.GET.status == 'resolved' %}selected{% endif %}>{% tr '已找回／已歸還' 'Reunited / returned' %}</option><option value="all" {% if request.GET.status == 'all' %}selected{% endif %}>{% tr '全部狀態' 'All statuses' %}</option></select></p>
+        <a class="text-link" href="/lost-found/?kind={% if request.GET.kind == 'lost' %}lost{% else %}found{% endif %}">{% tr '清除篩選' 'Clear filters' %}</a>
+      </div>
+    </details>
+  </form>
+
+  <div class="lf-result-heading"><h2>{% if request.GET.kind == 'lost' %}{% tr '他們正在尋找' 'Someone is looking for these' %}{% else %}{% tr '等待主人認領' 'Waiting to be reunited' %}{% endif %}</h2><span class="hint">{% tr '目前顯示' 'Showing' %} {{ rows|length }} {% tr '則資訊' 'notices' %}</span></div>
+  <div class="lf-grid">
+    {% for row in rows %}
+    <a class="wanted-card lf-card" href="/lost-found/{{ row.pk }}/">
+      {% if row.photo %}<img class="lf-card-photo" src="/media/lostfound/{{ row.pk }}/" alt="{{ row.title }}" loading="lazy">{% endif %}
+      <div class="lf-card-top"><span class="pill {% if row.kind == 'lost' %}lf-lost-pill{% endif %}">{{ row.get_kind_display|loc }}</span><span class="status {% if row.status == 'resolved' %}completed{% endif %}">{{ row.get_status_display|loc }}</span></div>
+      <span class="lf-category">{{ row.get_category_display|loc }}</span><h3>{{ row.title }}</h3><p class="lf-description">{{ row.description|truncatechars:110 }}</p>
+      <dl class="lf-card-facts"><dt>{% if row.kind == 'lost' %}{% tr '遺失時間' 'Lost on' %}{% else %}{% tr '拾獲時間' 'Found on' %}{% endif %}</dt><dd>{{ row.occurred_at|date:'m/d H:i' }}</dd><dt>{% tr '地點' 'Place' %}</dt><dd>{{ row.location }}</dd>{% if row.color %}<dt>{% tr '顏色' 'Colour' %}</dt><dd>{{ row.color }}</dd>{% endif %}</dl>
+      <div class="card-bottom"><span class="avatar tiny">{{ row.owner.profile.nickname|first }}</span>{{ row.owner.profile.nickname }}<span class="arrow" aria-hidden="true">→</span></div>
+    </a>
+    {% empty %}
+    <div class="empty-state"><span class="empty-icon" aria-hidden="true">⌕</span><h3>{% tr '暫時沒有符合條件的物品。' 'No items match your search yet.' %}</h3><p>{% tr '試試較短的關鍵詞、其他分類或較廣的地點，也可以先發布一則資訊。' 'Try fewer keywords, another category or a broader place, or post a notice.' %}</p><a class="button" href="/lost-found/new/?kind={% if request.GET.kind == 'lost' %}lost{% else %}found{% endif %}">＋ {% tr '發布資訊' 'Post a notice' %}</a></div>
+    {% endfor %}
+  </div>
+  <p class="notice lf-claim-note">{% tr '認領前，請在私人訊息核對未公開的物品特徵。不要公開完整證件號碼、門禁資料或其他敏感資訊。' 'Before a handover, verify an unpublished identifying detail in private messages. Keep full ID numbers, access details and other sensitive information out of public posts.' %}</p>
+</section>
+{% endblock %}

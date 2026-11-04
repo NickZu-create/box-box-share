@@ -1,0 +1,527 @@
+/* Original Box Box Share promotional hero, isolated from collection layout.
+   The generator reuses the original markup and artwork without rewriting it.
+   JS fixes the slot at the measured open height and continuously shrinks the
+   sticky hero while its bottom tracks the slot bottom. This avoids reflow loops. */
+.collection-page .hero-motion {
+  view-transition-name: collection-hero;
+}
+.collection-page .borrow-hero-slot {
+  --hero-duration: 420ms;
+  --hero-ease: cubic-bezier(.22, .72, .2, 1);
+  position: relative;
+  overflow-anchor: none;
+}
+.collection-page.view-explore .borrow-hero {
+  box-sizing: border-box;
+  position: sticky;
+  top: var(--hero-sticky-top, 90px);
+  display: grid;
+  grid-template-columns: 1.1fr 1fr;
+  width: 100%;
+  max-width: 1296px;
+  min-height: 375px;
+  margin: 0;
+  padding: 46px 64px;
+  border: 1px solid #f3dbe2;
+  border-radius: 18px;
+  overflow: hidden;
+  color: #35202a;
+  font: 15px/1.65 'DM Sans', 'Noto Sans TC', system-ui, sans-serif;
+  background: linear-gradient(162deg, transparent 0 42%, #f6dce4 42% 76%, transparent 76%),
+              linear-gradient(200deg, #fae8ed 0 28%, transparent 28%), #fdf4f6;
+  transition: height var(--hero-duration) var(--hero-ease),
+              min-height var(--hero-duration) var(--hero-ease),
+              padding var(--hero-duration) var(--hero-ease);
+}
+.collection-page.view-explore .borrow-hero::after {
+  content: '';
+  position: absolute;
+  right: -90px;
+  bottom: -140px;
+  width: 320px;
+  height: 320px;
+  opacity: .14;
+  transform: rotate(28deg);
+  background: linear-gradient(135deg, #e06636, #d2234a 55%, #b72755);
+  pointer-events: none;
+}
+.collection-page.view-explore .borrow-hero .hero-copy {
+  min-width: 0;
+  position: relative;
+  z-index: 1;
+}
+.collection-page.view-explore .borrow-hero .eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #b72755;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.65;
+  letter-spacing: 1.8px;
+}
+.collection-page.view-explore .borrow-hero .eyebrow > span {
+  display: block;
+  flex: 0 0 6px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: linear-gradient(90deg, #e06636, #d2234a);
+}
+.collection-page.view-explore .borrow-hero h1 {
+  margin: 22px 0 14px;
+  color: #96202e;
+  font-size: 44px;
+  font-weight: 700;
+  line-height: 1.3;
+  letter-spacing: -1.4px;
+  text-wrap: initial;
+  transition: font-size var(--hero-duration) var(--hero-ease),
+              margin var(--hero-duration) var(--hero-ease),
+              line-height var(--hero-duration) var(--hero-ease);
+}
+.collection-page.view-explore .borrow-hero .hero-copy > p {
+  max-width: 430px;
+  max-height: 160px;
+  margin: 14px 0;
+  color: #6b4a54;
+  font-size: 14px;
+  line-height: 1.9;
+}
+.collection-page.view-explore .borrow-hero .hero-links {
+  display: flex;
+  align-items: center;
+  gap: 26px;
+  max-height: 120px;
+  margin: 26px 0 24px;
+}
+.collection-page.view-explore .borrow-hero .button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 0;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 13px 23px;
+  background: #d2234a;
+  color: #fff;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.4;
+  box-shadow: none;
+}
+.collection-page.view-explore .borrow-hero .button:hover {
+  background: #b72755;
+}
+.collection-page.view-explore .borrow-hero .hero-secondary {
+  color: #b72755;
+  font-size: 13px;
+  font-weight: 600;
+}
+.collection-page.view-explore .borrow-hero .hero-note {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  max-height: 60px;
+  color: #8a737a;
+  font-size: 11px;
+  line-height: 1.65;
+}
+.collection-page.view-explore .borrow-hero .hero-note span {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 17px;
+  height: 17px;
+  border-radius: 50%;
+  background: #d2234a;
+  color: #fff;
+}
+.collection-page.view-explore .borrow-hero .hero-note i {
+  color: #dcb6c0;
+  font-style: normal;
+}
+.collection-page.view-explore .borrow-hero .hero-copy > p,
+.collection-page.view-explore .borrow-hero .hero-links,
+.collection-page.view-explore .borrow-hero .hero-note {
+  opacity: 1;
+  visibility: visible;
+  overflow: hidden;
+  transition: max-height var(--hero-duration) var(--hero-ease),
+              margin var(--hero-duration) var(--hero-ease),
+              opacity 220ms ease,
+              visibility var(--hero-duration);
+}
+.collection-page.view-explore .borrow-hero .hero-art {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  margin: 0;
+  opacity: 1;
+  transition: height var(--hero-duration) var(--hero-ease),
+              margin var(--hero-duration) var(--hero-ease),
+              opacity 240ms ease;
+}
+.collection-page.view-explore .borrow-hero .hero-art svg {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 510px;
+  height: auto;
+  transition: max-width var(--hero-duration) var(--hero-ease),
+              height var(--hero-duration) var(--hero-ease);
+}
+.collection-page.view-explore .borrow-hero .orbit {
+  position: absolute;
+  width: 310px;
+  height: 310px;
+  border: 1px solid #e7b3c1;
+  border-radius: 50%;
+  transform: rotate(-25deg);
+  opacity: .5;
+  pointer-events: none;
+  transition: opacity 200ms ease;
+}
+.collection-page.view-explore .borrow-hero .orbit-two {
+  width: 430px;
+  height: 230px;
+}
+.collection-page.view-explore .borrow-hero .sticker {
+  position: absolute;
+  z-index: 2;
+  padding: 8px 13px;
+  border-radius: 6px;
+  background: #fff;
+  color: #b72755;
+  box-shadow: 0 5px 14px #b7275522;
+  font-size: 10px;
+  letter-spacing: 1px;
+  pointer-events: none;
+  transition: opacity 200ms ease;
+}
+.collection-page.view-explore .borrow-hero .sticker-one {
+  top: 3px;
+  right: 30px;
+  transform: rotate(7deg);
+}
+.collection-page.view-explore .borrow-hero .sticker-two {
+  bottom: 0;
+  left: 50px;
+  transform: rotate(-7deg);
+}
+/* The compact form keeps the same original message, colors and illustration. */
+.collection-page.view-explore .borrow-hero.is-collapsed {
+  grid-template-columns: 1.65fr 1fr;
+  min-height: 135px;
+  padding: 18px 32px;
+}
+.collection-page.view-explore .borrow-hero.is-collapsed h1 {
+  margin: 8px 0 0;
+    font-size: 30px;
+  line-height: 1.25;
+  letter-spacing: -.7px;
+}
+.collection-page.view-explore .borrow-hero.is-collapsed .hero-copy > p,
+.collection-page.view-explore .borrow-hero.is-collapsed .hero-links,
+.collection-page.view-explore .borrow-hero.is-collapsed .hero-note {
+  max-height: 0;
+  margin-top: 0;
+  margin-bottom: 0;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+.collection-page.view-explore .borrow-hero.is-collapsed .hero-art svg {
+  max-width: 155px;
+}
+.collection-page.view-explore .borrow-hero.is-collapsed .sticker,
+.collection-page.view-explore .borrow-hero.is-collapsed .orbit {
+  opacity: 0;
+}
+/* Measurement clones must not inherit an in-progress animation. */
+.collection-page.view-explore .borrow-hero.is-measuring,
+.collection-page.view-explore .borrow-hero.is-measuring * {
+  transition: none !important;
+  animation: none !important;
+}
+@media (max-width:1399px) {
+  .collection-page.view-explore .borrow-hero {
+    padding: 42px 48px;
+  }
+  .collection-page.view-explore .borrow-hero.is-collapsed {
+    padding: 18px 30px;
+  }
+}
+@media (max-width:1000px) {
+  .collection-page.view-explore .borrow-hero {
+    padding: 35px;
+  }
+  .collection-page.view-explore .borrow-hero h1 {
+    font-size: 34px;
+  }
+  .collection-page.view-explore .borrow-hero .hero-note {
+    font-size: 9px;
+  }
+  .collection-page.view-explore .borrow-hero .hero-art .sticker {
+    font-size: 8px;
+  }
+  .collection-page.view-explore .borrow-hero.is-collapsed {
+    padding: 18px 26px;
+  }
+  .collection-page.view-explore .borrow-hero.is-collapsed h1 {
+    font-size: 28px;
+  }
+}
+@media (max-width:700px) {
+  .collection-page.view-explore .borrow-hero {
+    grid-template-columns: 1fr;
+    min-height: 0;
+    padding: 30px 25px 14px;
+    border-radius: 14px;
+  }
+  .collection-page.view-explore .borrow-hero h1 {
+    margin: 16px 0 12px;
+    font-size: 33px;
+    letter-spacing: -1px;
+  }
+  .collection-page.view-explore .borrow-hero .eyebrow {
+    font-size: 9px;
+    letter-spacing: 1.2px;
+  }
+  .collection-page.view-explore .borrow-hero .hero-copy > p {
+    max-width: 100%;
+    margin: 8px 0;
+    font-size: 12px;
+  }
+  .collection-page.view-explore .borrow-hero .hero-links {
+    margin: 19px 0;
+    gap: 24px;
+  }
+  .collection-page.view-explore .borrow-hero .hero-links .button {
+    padding: 12px 18px;
+    font-size: 12px;
+  }
+  .collection-page.view-explore .borrow-hero .hero-secondary {
+    font-size: 12px;
+  }
+  .collection-page.view-explore .borrow-hero .hero-note {
+    gap: 7px;
+    font-size: 9px;
+  }
+  .collection-page.view-explore .borrow-hero .hero-art {
+    height: 220px;
+    margin-top: 12px;
+  }
+  .collection-page.view-explore .borrow-hero .hero-art svg {
+    width: 100%;
+    height: 220px;
+  }
+  .collection-page.view-explore .borrow-hero .orbit-one {
+    width: 190px;
+    height: 190px;
+  }
+  .collection-page.view-explore .borrow-hero .orbit-two {
+    width: 290px;
+    height: 140px;
+  }
+  .collection-page.view-explore .borrow-hero .sticker-one {
+    top: 15px;
+    right: 5px;
+  }
+  .collection-page.view-explore .borrow-hero .sticker-two {
+    bottom: 6px;
+    left: 10px;
+  }
+  .collection-page.view-explore .borrow-hero.is-collapsed {
+    grid-template-columns: 1fr;
+    min-height: 0;
+    padding: 12px 18px;
+  }
+  .collection-page.view-explore .borrow-hero.is-collapsed h1 {
+    margin: 7px 0 0;
+    font-size: 23px;
+    line-height: 1.4;
+    letter-spacing: -.5px;
+    text-wrap: balance;
+  }
+  .collection-page.view-explore .borrow-hero.is-collapsed .hero-art {
+    height: 0;
+    margin: 0;
+    opacity: 0;
+    overflow: hidden;
+  }
+  .collection-page.view-explore .borrow-hero.is-collapsed .hero-art svg {
+    max-width: 100%;
+    height: 0;
+  }
+}
+@media (max-width:360px) {
+  .collection-page.view-explore .borrow-hero h1 {
+    font-size: clamp(25px, 8.2vw, 29px);
+  }
+  .collection-page.view-explore .borrow-hero .hero-links {
+    flex-wrap: wrap;
+    gap: 14px;
+  }
+  .collection-page.view-explore .borrow-hero .hero-note {
+    flex-wrap: wrap;
+    row-gap: 4px;
+  }
+}
+/* Continuous sticky scroll mode. Endpoints match the normal source and compact
+   rules; a fixed outer slot prevents the shrinking box from changing scrollY.
+   Root JS supplies inline height and --hero-progress, with no height easing. */
+.collection-page.view-explore .borrow-hero {
+  --hero-progress: 0;
+  --hero-open-pad-top: 46px;
+  --hero-open-pad-bottom: 46px;
+  --hero-open-pad-x: 64px;
+  --hero-closed-pad-top: 18px;
+  --hero-closed-pad-bottom: 18px;
+  --hero-closed-pad-x: 32px;
+  --hero-open-title: 44px;
+  --hero-closed-title: 30px;
+  --hero-open-title-top: 22px;
+  --hero-open-title-bottom: 14px;
+  --hero-closed-title-top: 8px;
+  --hero-open-title-leading: 1.3;
+  --hero-closed-title-leading: 1.25;
+  --hero-open-title-tracking: -1.4px;
+  --hero-closed-title-tracking: -.7px;
+  --hero-open-paragraph-margin: 14px;
+  --hero-open-links-top: 26px;
+  --hero-open-links-bottom: 24px;
+}
+@media (max-width:1399px) {
+  .collection-page.view-explore .borrow-hero {
+    --hero-open-pad-top: 42px;
+    --hero-open-pad-bottom: 42px;
+    --hero-open-pad-x: 48px;
+    --hero-closed-pad-x: 30px;
+  }
+}
+@media (max-width:1000px) {
+  .collection-page.view-explore .borrow-hero {
+    --hero-open-pad-top: 35px;
+    --hero-open-pad-bottom: 35px;
+    --hero-open-pad-x: 35px;
+    --hero-closed-pad-x: 26px;
+    --hero-open-title: 34px;
+    --hero-closed-title: 28px;
+  }
+}
+@media (max-width:700px) {
+  .collection-page.view-explore .borrow-hero {
+    --hero-open-pad-top: 30px;
+    --hero-open-pad-bottom: 14px;
+    --hero-open-pad-x: 25px;
+    --hero-closed-pad-top: 12px;
+    --hero-closed-pad-bottom: 12px;
+    --hero-closed-pad-x: 18px;
+    --hero-open-title: 33px;
+    --hero-closed-title: 23px;
+    --hero-open-title-top: 16px;
+    --hero-open-title-bottom: 12px;
+    --hero-closed-title-top: 7px;
+    --hero-closed-title-leading: 1.4;
+    --hero-open-title-tracking: -1px;
+    --hero-closed-title-tracking: -.5px;
+    --hero-open-paragraph-margin: 8px;
+    --hero-open-links-top: 19px;
+    --hero-open-links-bottom: 19px;
+  }
+}
+@media (max-width:360px) {
+  .collection-page.view-explore .borrow-hero {
+    --hero-open-title: clamp(25px, 8.2vw, 29px);
+  }
+}
+.collection-page.view-explore .borrow-hero.is-scroll-driven {
+  min-height: 0;
+  grid-template-columns: minmax(0, calc(52.38095% + 9.8832% * var(--hero-progress))) minmax(0, 1fr);
+  padding-top: calc(var(--hero-open-pad-top) + (var(--hero-closed-pad-top) - var(--hero-open-pad-top)) * var(--hero-progress));
+  padding-bottom: calc(var(--hero-open-pad-bottom) + (var(--hero-closed-pad-bottom) - var(--hero-open-pad-bottom)) * var(--hero-progress));
+  padding-left: calc(var(--hero-open-pad-x) + (var(--hero-closed-pad-x) - var(--hero-open-pad-x)) * var(--hero-progress));
+  padding-right: calc(var(--hero-open-pad-x) + (var(--hero-closed-pad-x) - var(--hero-open-pad-x)) * var(--hero-progress));
+  transition: none !important;
+}
+.collection-page.view-explore .borrow-hero.is-scroll-driven * {
+  transition: none !important;
+}
+.collection-page.view-explore .borrow-hero.is-scroll-driven h1 {
+  margin-top: calc(var(--hero-open-title-top) + (var(--hero-closed-title-top) - var(--hero-open-title-top)) * var(--hero-progress));
+  margin-bottom: calc(var(--hero-open-title-bottom) * (1 - var(--hero-progress)));
+  font-size: calc(var(--hero-open-title) + (var(--hero-closed-title) - var(--hero-open-title)) * var(--hero-progress));
+  line-height: calc(var(--hero-open-title-leading) + (var(--hero-closed-title-leading) - var(--hero-open-title-leading)) * var(--hero-progress));
+  letter-spacing: calc(var(--hero-open-title-tracking) + (var(--hero-closed-title-tracking) - var(--hero-open-title-tracking)) * var(--hero-progress));
+  text-wrap: initial;
+}
+.collection-page.view-explore .borrow-hero.is-scroll-driven .hero-copy > p {
+  max-height: calc(160px * (1 - var(--hero-progress)));
+  margin-top: calc(var(--hero-open-paragraph-margin) * (1 - var(--hero-progress)));
+  margin-bottom: calc(var(--hero-open-paragraph-margin) * (1 - var(--hero-progress)));
+  opacity: max(0, calc(1 - 3 * var(--hero-progress)));
+}
+.collection-page.view-explore .borrow-hero.is-scroll-driven .hero-links {
+  max-height: calc(120px * (1 - var(--hero-progress)));
+  margin-top: calc(var(--hero-open-links-top) * (1 - var(--hero-progress)));
+  margin-bottom: calc(var(--hero-open-links-bottom) * (1 - var(--hero-progress)));
+  opacity: max(0, calc(1 - 3 * var(--hero-progress)));
+}
+.collection-page.view-explore .borrow-hero.is-scroll-driven .hero-note {
+  max-height: calc(60px * (1 - var(--hero-progress)));
+  opacity: max(0, calc(1 - 3 * var(--hero-progress)));
+}
+.collection-page.view-explore .borrow-hero.is-scroll-driven .hero-art {
+  min-height: 0;
+}
+.collection-page.view-explore .borrow-hero.is-scroll-driven .hero-art svg {
+  max-width: calc(510px - 355px * var(--hero-progress));
+}
+.collection-page.view-explore .borrow-hero.is-scroll-driven .sticker,
+.collection-page.view-explore .borrow-hero.is-scroll-driven .orbit {
+  opacity: max(0, calc(.5 - var(--hero-progress)));
+}
+.collection-page.view-explore .borrow-hero.is-scroll-driven .sticker {
+  opacity: max(0, calc(1 - 2 * var(--hero-progress)));
+}
+@media (max-width:700px) {
+  .collection-page.view-explore .borrow-hero.is-scroll-driven {
+    grid-template-columns: 1fr;
+  }
+  .collection-page.view-explore .borrow-hero.is-scroll-driven .hero-art {
+    height: calc(220px * (1 - var(--hero-progress)));
+    margin-top: calc(12px * (1 - var(--hero-progress)));
+    opacity: max(0, calc(1 - 1.6 * var(--hero-progress)));
+    overflow: hidden;
+  }
+  .collection-page.view-explore .borrow-hero.is-scroll-driven .hero-art svg {
+    max-width: 510px;
+    height: calc(220px * (1 - var(--hero-progress)));
+  }
+}
+@media (prefers-reduced-motion:reduce) {
+  .collection-page .borrow-hero-slot { --hero-duration: 0ms; }
+  .collection-page.view-explore .borrow-hero,
+  .collection-page.view-explore .borrow-hero * {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+/* Route snapshots share the hero's bounds; content moves with its new position. */
+.collection-page{overflow-anchor:none}.collection-content{view-transition-name:collection-content}.collection-page #discover{scroll-margin-top:100px}.borrow-hero.is-measuring{view-transition-name:none!important}.collection-page.is-collection-loading{cursor:progress}
+::view-transition-group(collection-hero),::view-transition-group(collection-content){animation-duration:480ms;animation-timing-function:cubic-bezier(.22,.72,.2,1)}
+::view-transition-old(root){animation:none;opacity:0}::view-transition-new(root){animation:none}
+/* Clip the moving panel instead of stretching its text and illustration. */
+::view-transition-image-pair(collection-hero){overflow:hidden;border-radius:18px}
+::view-transition-old(collection-hero),::view-transition-new(collection-hero){height:auto;object-fit:contain;object-position:left top;mix-blend-mode:normal}
+::view-transition-old(collection-hero){animation:160ms ease-out both collection-hero-out}
+::view-transition-new(collection-hero){animation:240ms 80ms ease-out both collection-hero-in}
+@keyframes collection-hero-out{to{opacity:0}}
+@keyframes collection-hero-in{from{opacity:0}to{opacity:1}}
+::view-transition-old(collection-content),::view-transition-new(collection-content){height:auto;mix-blend-mode:normal}
+@media(prefers-reduced-motion:reduce){::view-transition-group(*),::view-transition-old(*),::view-transition-new(*){animation-duration:0s!important}}

@@ -64,8 +64,8 @@ class ProfileForm(Localized,forms.ModelForm):
     remove_avatar=forms.BooleanField(required=False,label='移除目前頭像 / Remove current avatar')
     class Meta:
         model=Profile
-        fields=['nickname','avatar','bio','interests','skills','languages']
-        labels=LABELS
+        fields=['nickname','avatar','bio','interests','skills','languages','university','major','academic_year','faculty']
+        labels={**LABELS,'university':'大學（選填） / University (optional)','major':'主修或課程（選填） / Major or Programme (optional)','academic_year':'年級（選填） / Academic year (optional)','faculty':'學院（選填） / Faculty or College (optional)'}
         # A plain file input. Django's default widget links to the current file's public URL, but photos are
         # private: DatabaseStorage (MEDIA_STORAGE=db, used on Render) has no public URL and raised, so
         # /profile/ returned a server error for every account that had uploaded an avatar.
@@ -108,3 +108,20 @@ class BuddyForm(DatesMixin,forms.ModelForm):
         if starts and ends and ends<=starts: self.add_error('ends','結束時間須晚於開始時間 / Must be after the start')
         if d.get('capacity') and d['capacity']<self.joined: self.add_error('capacity',f'已有 {self.joined} 人加入，名額不能少於此數 / {self.joined} people have already joined; spots cannot be fewer')
         return d
+
+LOSTFOUND_LABELS={'kind':'發布類型 / Post type','category':'物品分類 / Item category','title':'物品名稱 / Item name','description':'物品特徵與情況 / Description and identifying details','occurred_at':'丟失或拾到時間 / Lost or found at','location':'丟失或拾到地點 / Lost or found near','color':'顏色（選填） / Colour (optional)','photo':'照片（選填） / Photo (optional)','status':'狀態 / Status'}
+class LostFoundForm(DatesMixin,forms.ModelForm):
+    class Meta:
+        model=LostFoundPost
+        fields=['kind','category','title','description','occurred_at','location','color','photo','status']
+        widgets={'photo':forms.FileInput(attrs={'accept':'image/jpeg,image/png,image/webp'})}
+        help_texts={'description':'請勿公開證件號碼、完整姓名、電話或住址；保留部分特徵讓對方核對。 / Do not publish ID numbers, full names, phone numbers or home addresses; keep some details private for verification.','photo':'上限 5 MB；請遮蓋證件和個人資料。 / Up to 5 MB; cover identity and personal details.'}
+    def __init__(self,*a,**kw):
+        super().__init__(*a,**kw); self.setup(LOSTFOUND_LABELS)
+    def clean_occurred_at(self):
+        when=self.cleaned_data['occurred_at']
+        if when>timezone.now(): raise forms.ValidationError('時間不能晚於現在 / The time cannot be in the future')
+        return when
+    def clean_photo(self):
+        value=self.cleaned_data.get('photo')
+        return clean_image(value) if hasattr(value,'content_type') else value

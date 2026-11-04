@@ -1,0 +1,15 @@
+{% if user.is_authenticated and user.pk != safety_user.pk %}
+<details class="safety-control">
+  <summary class="text-link">{% if blocked_by_me %}{% tr '解除拉黑' 'Unblock member' %}{% else %}{% tr '拉黑對方' 'Block member' %}{% endif %}</summary>
+  <form method="post" action="/people/{{ safety_user.pk }}/block/" class="safety-confirm">
+    {% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}">
+    {% if blocked_by_me %}
+      <p class="hint">{% tr '解除後，對方可再次透過站內訊息聯絡你。' 'After unblocking, this member can contact you through Messages again.' %}</p>
+      <button class="button secondary compact" name="action" value="unblock">{% tr '確認解除拉黑' 'Confirm unblock' %}</button>
+    {% else %}
+      <p class="hint">{% tr '拉黑後，雙方不能再互傳訊息；既有對話與借還訂單紀錄會保留。對方不會收到拉黑通知。' 'Blocking stops new messages in both directions. Existing conversation and order records remain. They will not be notified.' %}</p>
+      <button class="button danger compact" name="action" value="block">{% tr '確認拉黑' 'Confirm block' %}</button>
+    {% endif %}
+  </form>
+</details>
+{% endif %}

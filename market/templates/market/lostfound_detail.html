@@ -1,0 +1,37 @@
+{% extends 'market/base.html' %}
+{% load static %}
+{% block title %}{{ post.title }} · {% tr '失物招領' 'Lost & Found' %}{% endblock %}
+{% block content %}
+<link rel="stylesheet" href="{% static 'market/lostfound.css' %}">
+<section class="page lf-page">
+  <a class="breadcrumb" href="/lost-found/?kind={{ post.kind }}">← {% tr '失物招領' 'Lost & Found' %}</a>
+  <div class="lf-detail-grid">
+    <div class="panel lf-detail">
+      <div class="pill-row"><span class="pill {% if post.kind == 'lost' %}lf-lost-pill{% endif %}">{{ post.get_kind_display|loc }}</span><span class="pill soft">{{ post.get_category_display|loc }}</span><span class="status {% if post.status == 'resolved' %}completed{% endif %}">{{ post.get_status_display|loc }}</span></div>
+      <h1>{{ post.title }}</h1>
+      {% if post.photo %}<div class="lf-detail-photo"><img src="/media/lostfound/{{ post.pk }}/" alt="{{ post.title }}"></div>{% endif %}
+      <p class="lf-body">{{ post.description|linebreaksbr }}</p>
+      <dl class="facts"><dt>{% if post.kind == 'lost' %}{% tr '遺失時間' 'Lost on' %}{% else %}{% tr '拾獲時間' 'Found on' %}{% endif %}</dt><dd>{{ post.occurred_at|date:'Y-m-d H:i' }}</dd><dt>{% tr '地點' 'Place' %}</dt><dd>{{ post.location }}</dd>{% if post.color %}<dt>{% tr '顏色' 'Colour' %}</dt><dd>{{ post.color }}</dd>{% endif %}<dt>{% tr '發布時間' 'Posted on' %}</dt><dd>{{ post.created|date:'Y-m-d H:i' }}</dd></dl>
+      <p class="hint">{{ t.timezone }}</p>
+      <a class="owner-box" href="/people/{{ post.owner_id }}/"><span class="avatar">{{ post.owner.profile.nickname|first }}</span><span><strong>{{ post.owner.profile.nickname }}</strong><small>{% if post.kind == 'lost' %}{% tr '失主' 'Owner looking for an item' %}{% else %}{% tr '拾獲者' 'Finder' %}{% endif %}</small></span></a>
+    </div>
+    <aside>
+      {% if user.pk == post.owner_id %}
+      <div class="panel lf-contact-panel"><h2>{% tr '管理這則資訊' 'Manage this notice' %}</h2><p class="hint">{% tr '找到物品或完成歸還後，請更新狀態，讓其他人知道。' 'Update the status once the item has been found or returned.' %}</p><div class="actions"><a class="button secondary" href="/lost-found/{{ post.pk }}/edit/">{{ t.edit }}</a><form method="post">{% csrf_token %}{% if post.status == 'open' %}<button class="button" name="action" value="resolve">{% tr '標記已找回／已歸還' 'Mark reunited / returned' %}</button>{% else %}<button class="button secondary" name="action" value="reopen">{% tr '重新開放' 'Reopen notice' %}</button>{% endif %}</form></div><a class="text-link" href="/messages/">{% tr '前往訊息查看聯絡' 'View conversations in Messages' %} →</a></div>
+      {% else %}
+      <div class="panel lf-contact-panel"><h2>{% if post.kind == 'lost' %}{% tr '你有相關線索嗎？' 'Have a lead?' %}{% else %}{% tr '這是你的物品嗎？' 'Could this be yours?' %}{% endif %}</h2>
+        {% if blocked %}<p class="notice">{% if blocked_by_me %}{% tr '你已拉黑這位成員，不能發起新對話。' 'You have blocked this member and cannot start a conversation.' %}{% else %}{% tr '目前無法與這位成員發起對話。' 'A conversation with this member is currently unavailable.' %}{% endif %}</p>
+        {% elif can_contact %}<p class="hint">{% tr '直接透過站內訊息聯絡，不需要先成為好友。' 'Contact them directly in Messages; no friend request is needed.' %}</p><form method="post" action="/lost-found/{{ post.pk }}/contact/">{% csrf_token %}<button class="button lf-contact-button">{% if post.kind == 'lost' %}{% tr '聯絡失主' 'Contact the owner' %}{% else %}{% tr '聯絡拾獲者' 'Contact the finder' %}{% endif %} ↗</button></form><p class="hint">{% tr '對話會保留在 Messages，並標示這則物品資訊。' 'Your conversation stays in Messages with this notice attached.' %}</p>
+        {% elif post.status == 'resolved' %}<p class="notice">{% tr '這則資訊已標記為已找回或已歸還，暫不接受新的聯絡。' 'This notice is marked as reunited or returned and is not accepting new contacts.' %}</p>
+        {% elif not user.is_authenticated %}<p class="hint">{% tr '用學校郵箱登入後，即可透過私人訊息聯絡對方。' 'Sign in with your school email to contact them privately.' %}</p><a class="button" href="/login/">{{ t.login }}</a>
+        {% else %}<p class="notice">{% tr '目前無法發起新對話。請查看資訊狀態或帳號驗證狀態。' 'A new conversation is currently unavailable. Check the notice status and your account verification.' %}</p>{% endif %}
+      </div>
+      <div class="panel lf-safety"><h2>{% tr '安心聯絡' 'Keep contact comfortable' %}</h2><p class="hint">{% tr '請在訊息中核對未公開的特徵，約在校園公共地點交接。遇到騷擾，可以拉黑並舉報。' 'Verify an unpublished detail in private and arrange a handover in a public campus location. Block and report harassment.' %}</p><div class="actions"><a class="report-link" href="/report/lostfound/{{ post.pk }}/">{% tr '舉報這則資訊' 'Report this notice' %} →</a><a class="report-link" href="/report/user/{{ post.owner_id }}/">{% tr '舉報用戶／騷擾' 'Report member / harassment' %} →</a></div>
+        {% if user.is_authenticated %}<details class="confirm lf-block-control"><summary class="text-button">{% if blocked_by_me %}{% tr '解除拉黑' 'Unblock member' %}{% else %}{% tr '拉黑這位成員' 'Block this member' %}{% endif %}</summary><p class="hint">{% tr '拉黑後，雙方不能再發送新訊息；已有對話和借用訂單紀錄會保留。' 'Blocking stops new messages in both directions. Existing conversation and borrowing records remain available.' %}</p><form method="post" action="/people/{{ post.owner_id }}/block/">{% csrf_token %}<input type="hidden" name="next" value="/lost-found/{{ post.pk }}/"><button class="button secondary compact" name="action" value="{% if blocked_by_me %}unblock{% else %}block{% endif %}">{% if blocked_by_me %}{% tr '確認解除拉黑' 'Confirm unblock' %}{% else %}{% tr '確認拉黑' 'Confirm block' %}{% endif %}</button></form></details>{% endif %}
+      </div>
+      {% endif %}
+      <p class="hint lf-side-note">{% tr '公開資訊不代表物品所有權已獲核實。請私下核對，勿在公開頁面貼出完整證件號碼。' 'A public notice does not verify ownership. Check privately and keep full ID numbers off public pages.' %}</p>
+    </aside>
+  </div>
+</section>
+{% endblock %}

@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+
+<html lang="en"><head><meta charset="utf-8"/><meta content="width=device-width,initial-scale=1" name="viewport"/><link href="/static/market/brand-logo-cityu-colors.png" rel="icon" type="image/png"/><link href="/static/market/brand-logo-cityu-colors.png" rel="apple-touch-icon"/><meta content="#d2234a" name="theme-color"/><meta content="Box Box Share: item lending and borrowing for the CityUHK community." name="description"/><title>Post a lost or found item · Box Box Share</title><link href="/static/market/style.css" rel="stylesheet"/><link href="/showcase.css" rel="stylesheet"/><script defer="" src="/showcase.js"></script></head>
+<body data-language="en" data-notice="Example data only — this showcase does not send messages, save changes or create transactions." data-route="/lost-found/new/lost/"><div class="brand-bar"></div><header><a aria-label="Box Box Share home" class="brand" href="/en/"><img alt="" class="brand-logo" height="48" src="/static/market/brand-logo-cityu-colors.png" width="48"/><span class="brand-name">Box Box Share<small>FOR THE CITYUHK COMMUNITY</small></span></a><nav aria-label="Main navigation"><a class="" href="/en/">Explore</a><a class="" href="/en/seeking/">Seeking</a><a class="selected" href="/en/lost-found/">Lost &amp; Found</a><a class="" href="/en/buddy/">Buddy</a><a class="" href="/en/my/">My activity</a><a class="" href="/en/messages/">Messages</a><a class="nav-impact" href="/en/impact/">Impact</a></nav><div class="header-actions"><details class="lang-menu"><summary aria-label="Language / 語言 / 语言" class="lang">EN ▾</summary><form action="#" data-demo-language="true" id="lang-form" method="get"><button aria-current="true" name="lang" value="en">English</button><button name="lang" value="zh">繁體中文</button><button name="lang" value="hans">简体中文</button></form></details><a aria-label="Profile" class="avatar small" href="/en/profile/">D</a><a aria-label="List an item" class="button compact" href="/en/items/new/">＋<span class="publish-label"> List an item</span></a></div></header>
+<div class="showcase-banner"><strong>Showcase</strong><span>All members, messages and orders are examples. Browse freely; nothing is sent or booked.</span><a href="/en/my/">Sample orders</a><a href="/en/lost-found/">Lost &amp; Found</a></div>
+<main>
+<link href="/static/market/lostfound.css" rel="stylesheet"/>
+<section class="page narrow lf-page">
+<a class="breadcrumb" href="/en/lost-found/lost/">← Lost &amp; Found</a>
+<h1>Post a lost item</h1>
+<p class="hint">Describe the item, when and where it was lost or found. Other members can contact you privately in Messages.</p>
+<form action="#" class="panel form-stack" data-demo-action="true" enctype="multipart/form-data" method="get">
+
+<div class="notice lf-form-notice">Keep one identifying detail private for checking ownership. Cover full names, ID/card numbers and access details in photos. Do not publish phone numbers or email addresses.</div>
+<p>
+<label for="id_kind">Post type:</label>
+<select id="id_kind" name="kind" required="">
+<option value="">---------</option>
+<option value="found">Found an item</option>
+<option selected="" value="lost">Lost an item</option>
+</select>
+</p>
+<p>
+<label for="id_category">Item category:</label>
+<select id="id_category" name="category" required="">
+<option selected="" value="">---------</option>
+<option value="phones">Phones</option>
+<option value="electronics">Electronics</option>
+<option value="wallets">Wallets and cash</option>
+<option value="cards">IDs and cards</option>
+<option value="keys">Keys</option>
+<option value="bags">Bags</option>
+<option value="clothing">Clothing</option>
+<option value="books">Books and stationery</option>
+<option value="jewellery">Jewellery and watches</option>
+<option value="sports">Sports gear</option>
+<option value="bottles">Bottles and lunchware</option>
+<option value="other">Other</option>
+</select>
+</p>
+<p>
+<label for="id_title">Item name:</label>
+<input id="id_title" maxlength="100" name="title" required="" type="text"/>
+</p>
+<p>
+<label for="id_description">Description and identifying details:</label>
+<textarea aria-describedby="id_description_helptext" cols="40" id="id_description" maxlength="3000" name="description" required="" rows="4">
+</textarea>
+<span class="helptext" id="id_description_helptext">Do not publish ID numbers, full names, phone numbers or home addresses; keep some details private for verification.</span>
+</p>
+<p>
+<label for="id_occurred_at">Lost or found at:</label>
+<input id="id_occurred_at" name="occurred_at" required="" type="datetime-local"/>
+</p>
+<p>
+<label for="id_location">Lost or found near:</label>
+<input id="id_location" maxlength="160" name="location" required="" type="text"/>
+</p>
+<p>
+<label for="id_color">Colour (optional):</label>
+<input id="id_color" maxlength="60" name="color" type="text"/>
+</p>
+<p>
+<label for="id_photo">Photo (optional):</label>
+<input accept="image/jpeg,image/png,image/webp" aria-describedby="id_photo_helptext" disabled="disabled" id="id_photo" name="photo" type="file"/>
+<span class="helptext" id="id_photo_helptext">Up to 5 MB; cover identity and personal details.</span>
+</p>
+<p>
+<label for="id_status">Status:</label>
+<select id="id_status" name="status">
+<option selected="" value="open">Open</option>
+<option value="resolved">Reunited</option>
+</select>
+</p>
+<p class="hint">All times in Hong Kong · Asia/Hong_Kong · Photo optional, up to 5 MB; JPEG, PNG or WebP only.</p>
+<div class="actions"><button class="button">Publish notice →</button><a class="text-link" href="/en/lost-found/">Back to notices</a></div>
+</form>
+</section>
+</main>
+<footer><div><a class="brand footer-brand" href="/en/"><img alt="" class="brand-logo" height="36" src="/static/market/brand-logo-cityu-colors.png" width="36"/><span>Box Box Share</span></a><p>Run by Box Box for the CityUHK community. Not an official CityUHK platform or endorsed by the university.</p><small>Email verification confirms mailbox access, not current enrolment.</small></div><div><a href="/en/rules/">Community rules</a> · <a href="/en/impact/">Impact</a><p>All times in Hong Kong · Asia/Hong_Kong</p><small>HKD · Offline payment · Bilateral confirmation</small></div></footer>
+
+<div class="mobile-nav"><a href="/en/">⌂<span>Explore</span></a><a href="/en/seeking/">◎<span>Seeking</span></a><a href="/en/lost-found/">⌕<span>Lost &amp; Found</span></a><a href="/en/buddy/">✦<span>Buddy</span></a><a href="/en/items/new/">＋<span>List an item</span></a><a href="/en/my/">↔<span>My activity</span></a><a href="/en/messages/">☏<span>Messages</span></a></div>
+<div hidden="" id="showcase-notice" role="status"></div></body></html>

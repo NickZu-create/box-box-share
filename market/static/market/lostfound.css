@@ -1,0 +1,61 @@
+.lf-page{--lf-rose:#b72755;--lf-line:#efdae1}
+.lf-masthead{display:flex;justify-content:space-between;gap:24px;align-items:center;margin-bottom:25px}
+.lf-masthead h1{margin:10px 0 8px;max-width:760px}
+.lf-masthead p{margin:0;max-width:700px}
+.lf-masthead>.text-link{white-space:nowrap;color:var(--green)}
+.lf-sections{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:22px}
+.lf-section{background:white;border:1px solid var(--lf-line);border-radius:13px;padding:21px;display:flex;align-items:center;justify-content:space-between;gap:18px}
+.lf-section.is-selected{border:2px solid var(--lf-rose);padding:20px;background:#fcf0f3}
+.lf-section-link{display:flex;align-items:center;gap:14px;flex:1;min-width:0}
+.lf-section-link strong{display:block;font-size:20px;line-height:1.35;color:var(--deep)}
+.lf-section-link small{display:block;font-size:12px;color:var(--muted);line-height:1.6;margin-top:5px}
+.lf-section-symbol{width:43px;height:43px;display:grid;place-items:center;flex-shrink:0;border-radius:12px;background:#f7e1e7;color:var(--green);font-size:27px}
+.lf-section .compact{font-size:12px;padding:10px 12px;flex-shrink:0}
+.lf-search{padding:20px}
+.lf-search-primary{display:grid;grid-template-columns:minmax(210px,1.5fr) minmax(150px,.9fr) minmax(170px,1fr) auto;gap:13px;align-items:end}
+.lf-search p{margin:0;font-size:13px}
+.lf-search label{display:block;font-size:12px;font-weight:600;margin-bottom:7px}
+.lf-search input,.lf-search select{width:100%;min-width:0;padding:11px 12px;border:1px solid #e9dce0;border-radius:7px;background:#fffcfb;color:var(--ink);font-size:13px}
+.lf-search-primary .button{min-height:44px}
+.lf-more{margin-top:17px;border-top:1px solid var(--line);padding-top:13px;font-size:12px;color:var(--muted)}
+.lf-more summary{cursor:pointer;line-height:1.6}
+.lf-search-secondary{display:grid;grid-template-columns:1fr 1fr auto;gap:15px;align-items:end;padding-top:15px;max-width:790px}
+.lf-search-secondary>.text-link{padding-bottom:10px;color:var(--green)}
+.lf-result-heading{display:flex;align-items:center;justify-content:space-between;gap:15px;margin:30px 0 17px}
+.lf-result-heading h2{font-size:21px;margin:0}
+.lf-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px}
+.lf-card{display:flex;flex-direction:column;min-width:0;padding:22px}
+.lf-card[hidden]{display:none}
+.lf-card-top{display:flex;gap:10px;justify-content:space-between;align-items:center;margin-bottom:13px}
+.lf-card-top .pill{margin:0;white-space:nowrap}
+.lf-card-top .status{white-space:nowrap;font-size:10px}
+.lf-lost-pill{background:#fbecd9;color:#8f542e}
+.lf-category{font-size:11px;color:var(--green);font-weight:600;margin-bottom:5px}
+.lf-card h3{font-size:17px;line-height:1.5;overflow-wrap:anywhere}
+.lf-card>.lf-description{font-size:13px;line-height:1.75;margin:8px 0 18px;color:#75616a;flex:1;overflow-wrap:anywhere}
+.lf-card-facts{display:grid;grid-template-columns:auto 1fr;gap:7px 12px;margin:0;font-size:12px}
+.lf-card-facts dt{color:var(--muted)}
+.lf-card-facts dd{margin:0;overflow-wrap:anywhere}
+.lf-card .card-bottom{margin-top:19px}
+.lf-card-photo{width:calc(100% + 44px);margin:-22px -22px 19px;aspect-ratio:4/3;object-fit:cover;background:#f6edef}
+.lf-claim-note{margin-top:25px;line-height:1.8}
+.lf-detail-grid{display:grid;grid-template-columns:minmax(0,1.45fr) minmax(290px,1fr);gap:26px;margin-top:21px;align-items:start}
+.lf-detail .pill-row{margin-bottom:14px}
+.lf-detail h1{overflow-wrap:anywhere;margin-top:4px}
+.lf-detail .lf-body{font-size:15px;line-height:1.9;overflow-wrap:anywhere;margin-bottom:25px}
+.lf-detail .facts dd{overflow-wrap:anywhere}
+.lf-detail-photo{border-radius:10px;overflow:hidden;margin:20px 0;background:#f5e8ec;display:grid;place-items:center}
+.lf-detail-photo img{max-width:100%;max-height:520px;object-fit:contain;display:block}
+.lf-contact-panel{border-top:3px solid var(--lf-rose)}
+.lf-contact-panel h2,.lf-safety h2{margin:0 0 13px}
+.lf-contact-button{width:100%;margin:5px 0 10px}
+.lf-contact-panel form{margin:0}
+.lf-contact-panel .actions{align-items:center}
+.lf-safety .actions{gap:12px 18px}
+.lf-block-control{border-top:1px solid var(--line);padding-top:15px;margin-top:17px}
+.lf-block-control summary{display:inline-block;color:#8a3f44;font-size:12px}
+.lf-block-control p{margin-bottom:12px}
+.lf-side-note{padding:0 8px;line-height:1.8}
+.lf-form-notice{margin-bottom:24px;line-height:1.8}
+@media(max-width:1100px){.lf-section{flex-wrap:wrap}.lf-section .compact{margin-left:57px}.lf-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.lf-search-primary{grid-template-columns:minmax(180px,1.4fr) minmax(140px,1fr) minmax(140px,1fr)}.lf-search-primary>.button{grid-column:1/-1;justify-self:end}.lf-detail-grid{gap:18px}}
+@media(max-width:700px){.lf-masthead{display:block}.lf-masthead h1{font-size:27px;line-height:1.45}.lf-masthead>.text-link{display:inline-block;margin-top:12px;font-size:12px}.lf-sections{gap:10px}.lf-section{padding:14px;display:block}.lf-section.is-selected{padding:13px}.lf-section-link{display:block}.lf-section-symbol{width:35px;height:35px;font-size:24px;margin-bottom:10px}.lf-section-link strong{font-size:18px}.lf-section-link small{font-size:11px;min-height:52px}.lf-section .compact{margin:14px 0 0;font-size:10px;padding:9px 8px;width:100%}.lf-search{padding:16px}.lf-search-primary{grid-template-columns:1fr 1fr;gap:12px}.lf-search-primary .lf-keyword{grid-column:1/-1}.lf-search-primary>.button{justify-self:stretch}.lf-search input,.lf-search select{font-size:12px;padding:10px}.lf-search-secondary{grid-template-columns:1fr 1fr;gap:12px}.lf-search-secondary>.text-link{grid-column:1/-1;padding-bottom:0}.lf-result-heading{align-items:start;margin-top:25px}.lf-result-heading h2{font-size:20px}.lf-result-heading .hint{font-size:11px;text-align:right;white-space:nowrap}.lf-grid{grid-template-columns:1fr;gap:13px}.lf-card{padding:20px}.lf-card-photo{width:calc(100% + 40px);margin:-20px -20px 18px;max-height:240px}.lf-card h3{font-size:17px}.lf-card>.lf-description{font-size:13px;margin-bottom:15px}.lf-card-facts{font-size:12px}.lf-detail-grid{grid-template-columns:1fr;gap:0}.lf-detail .lf-body{font-size:14px}.lf-contact-button{font-size:14px}.lf-side-note{padding:0 2px}.lf-contact-panel .actions{display:flex;flex-wrap:wrap}}
