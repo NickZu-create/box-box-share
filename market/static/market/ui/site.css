@@ -50,3 +50,34 @@
   .session-control{padding:0 16px 88px}
   .flashes{padding:0 16px}
 }
+
+/* The floated share button must not narrow the item layout beside it. */
+.detail-preview .detail-grid{clear:both}
+
+/* iOS Safari gives date inputs an intrinsic width wider than their container. */
+@supports (-webkit-touch-callout:none){
+  input[type=datetime-local],input[type=date],input[type=time]{-webkit-appearance:none;appearance:none;display:block;width:100%;max-width:100%;min-width:0;min-height:46px}
+  input[type=datetime-local]::-webkit-date-and-time-value{text-align:left}
+}
+
+.signin-short{display:none}
+
+@media(max-width:700px){
+  /* Same control height, so the labels above Category and Place line up. */
+  .polished .lf-search-primary{align-items:start}
+  .polished .lf-search input,.polished .lf-search select{height:46px}
+}
+
+@media(max-width:430px){
+  /* Keep the header inside narrow phones in every language. */
+  .site-header{gap:8px}
+  .site-header .brand{min-width:0}
+  .site-header .brand-name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .site-header .header-actions{flex-shrink:0;gap:10px}
+  .signin-full{display:none}
+  .signin-short{display:inline}
+}
+
+@media(max-width:360px){
+  .site-header .brand-name{display:none!important}
+}

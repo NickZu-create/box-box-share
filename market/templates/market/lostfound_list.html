@@ -11,11 +11,11 @@
 
   <div class="lf-sections" aria-label="{% tr '失物招領分區' 'Lost and found sections' %}">
     <div class="lf-section {% if request.GET.kind != 'lost' %}is-selected{% endif %}">
-      <a class="lf-section-link" href="/lost-found/?kind=found" {% if request.GET.kind != 'lost' %}aria-current="page"{% endif %}><span class="lf-section-symbol" aria-hidden="true">↗</span><span><strong>{% tr '拾獲物品' 'Found items' %}</strong><small>{% tr '撿到了東西，幫它找到主人。' 'Found something? Help its owner find it.' %}</small></span></a>
+      <a class="lf-section-link" href="/lost-found/?kind=found" {% if request.GET.kind != 'lost' %}aria-current="page"{% endif %}><span class="lf-section-symbol" aria-hidden="true"><img class="ui-icon" src="{% static 'market/ui/icons/package.svg' %}" alt="" width="20" height="20"></span><span><strong>{% tr '拾獲物品' 'Found items' %}</strong><small>{% tr '撿到了東西，幫它找到主人。' 'Found something? Help its owner find it.' %}</small></span></a>
       <a class="button secondary compact" href="/lost-found/new/?kind=found">＋ {% tr '發布拾獲' 'Post a found item' %}</a>
     </div>
     <div class="lf-section {% if request.GET.kind == 'lost' %}is-selected{% endif %}">
-      <a class="lf-section-link" href="/lost-found/?kind=lost" {% if request.GET.kind == 'lost' %}aria-current="page"{% endif %}><span class="lf-section-symbol" aria-hidden="true">⌕</span><span><strong>{% tr '遺失物品' 'Lost items' %}</strong><small>{% tr '不見了東西，讓大家一起留意。' 'Lost something? Let the community look out for it.' %}</small></span></a>
+      <a class="lf-section-link" href="/lost-found/?kind=lost" {% if request.GET.kind == 'lost' %}aria-current="page"{% endif %}><span class="lf-section-symbol" aria-hidden="true"><img class="ui-icon" src="{% static 'market/ui/icons/search.svg' %}" alt="" width="20" height="20"></span><span><strong>{% tr '遺失物品' 'Lost items' %}</strong><small>{% tr '不見了東西，讓大家一起留意。' 'Lost something? Let the community look out for it.' %}</small></span></a>
       <a class="button secondary compact" href="/lost-found/new/?kind=lost">＋ {% tr '發布遺失' 'Post a lost item' %}</a>
     </div>
   </div>
