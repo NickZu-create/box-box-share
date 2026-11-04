@@ -1,6 +1,7 @@
 import re, tempfile, shutil, base64, json
 from concurrent.futures import ThreadPoolExecutor
 from unittest import mock
+from urllib.error import HTTPError
 from datetime import timedelta
 from decimal import Decimal
 from io import BytesIO
@@ -341,6 +342,15 @@ class ResendMail(TestCase):
             r=Client().post('/login/',{'email':'amy@my.cityu.edu.hk'})
         self.assertContains(r,'郵件服務暫時無法使用')
         self.assertFalse(LoginToken.objects.exists())
+    def test_rejection_logged_with_reason_but_not_key(self):
+        refused=HTTPError('https://api.resend.com/emails',401,'Unauthorized',{},BytesIO(b'{"message":"API key is invalid"}'))
+        with mock.patch('market.mail.urlopen',side_effect=refused),self.assertLogs('market.mail','ERROR') as logs:
+            Client().post('/login/',{'email':'amy@my.cityu.edu.hk'})
+        self.assertIn('HTTP 401',logs.output[0]);self.assertIn('API key is invalid',logs.output[0])
+    def test_unexpected_error_logged_without_its_text(self):
+        with mock.patch('market.mail.urlopen',side_effect=ValueError('Bearer re_test')),self.assertLogs('market.mail','ERROR') as logs:
+            Client().post('/login/',{'email':'amy@my.cityu.edu.hk'})
+        self.assertIn('ValueError',logs.output[0]);self.assertNotIn('re_test',logs.output[0])
 
 class SecurityHeaders(TestCase):
     def test_csp_and_permissions_policy(self):

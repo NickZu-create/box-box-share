@@ -37,7 +37,7 @@ STORAGES = {'default': {'BACKEND':'market.dbstorage.DatabaseStorage' if os.geten
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 LOGIN_URL = '/login/'
 # Resend's HTTPS API when RESEND_API_KEY is set (for hosts that block SMTP), otherwise SMTP, otherwise local files.
-RESEND_API_KEY = os.getenv('RESEND_API_KEY','')
+RESEND_API_KEY = os.getenv('RESEND_API_KEY','').strip()
 EMAIL_BACKEND = 'market.mail.ResendBackend' if RESEND_API_KEY else 'django.core.mail.backends.smtp.EmailBackend' if os.getenv('EMAIL_HOST') else 'django.core.mail.backends.filebased.EmailBackend'
 EMAIL_FILE_PATH = BASE_DIR/'dev-mail'
 EMAIL_HOST = os.getenv('EMAIL_HOST','')
@@ -45,7 +45,7 @@ EMAIL_PORT = int(os.getenv('EMAIL_PORT','587'))
 EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER','')
 EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD','')
 EMAIL_USE_TLS = os.getenv('EMAIL_USE_TLS','1') == '1'
-DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL','Box Box Share <noreply@localhost>')
+DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL','Box Box Share <noreply@localhost>').strip()
 MAIL_LIVE = bool(RESEND_API_KEY or EMAIL_HOST)
 ALLOWED_EMAIL_DOMAINS = os.getenv('ALLOWED_EMAIL_DOMAINS','my.cityu.edu.hk').lower().split(',')
 SESSION_COOKIE_HTTPONLY = True

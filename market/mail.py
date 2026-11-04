@@ -1,7 +1,10 @@
-import json
+import json, logging
+from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 from django.conf import settings
 from django.core.mail.backends.base import BaseEmailBackend
+
+log = logging.getLogger(__name__)
 
 # Resend's HTTPS API, for hosts that block outbound SMTP ports (Render free blocks 25/465/587).
 class ResendBackend(BaseEmailBackend):
@@ -13,6 +16,10 @@ class ResendBackend(BaseEmailBackend):
             try:
                 with urlopen(req,timeout=settings.EMAIL_TIMEOUT) as response: response.read()
                 sent+=1
-            except Exception:
+            except Exception as exc:
+                # Never log the exception itself in the general case: some repeat the Authorization header.
+                if isinstance(exc,HTTPError): log.error('Resend rejected the email: HTTP %s %s',exc.code,exc.read(500).decode(errors='replace'))
+                elif isinstance(exc,URLError): log.error('Could not reach Resend: %s',exc.reason)
+                else: log.error('Could not send through Resend: %s',type(exc).__name__)
                 if not self.fail_silently: raise
         return sent
