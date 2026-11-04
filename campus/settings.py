@@ -76,6 +76,9 @@ AI_TIMEOUT = int(os.getenv('AI_TIMEOUT','60'))
 AI_IMAGE_DATA_URI = os.getenv('AI_IMAGE_DATA_URI','0') == '1'
 # Shown to users before they upload, because photos leave this server.
 AI_PROVIDER_LABEL = os.getenv('AI_PROVIDER_LABEL','智譜 AI（中國內地） / Zhipu AI (mainland China)')
+# Reference exchange rates for the payment page (daily, no key; attribution is shown on the page).
+FX_URL = os.getenv('FX_URL','https://open.er-api.com/v6/latest/HKD')
+FX_TIMEOUT = int(os.getenv('FX_TIMEOUT','5'))
 CARBON_AVOIDED_PURCHASE_RATE = os.getenv('CARBON_AVOIDED_PURCHASE_RATE','0.25')
 EMAIL_TIMEOUT = 15
 

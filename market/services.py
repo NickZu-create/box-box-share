@@ -101,7 +101,9 @@ ORDER_ACTIONS={'accept':'物主已接受申請 / Application accepted','cancel':
 def event(order,actor,action,data=None):
     Audit.objects.create(order=order,actor=actor,action=action,data=data or {})
     other=order.borrower if actor.pk==order.item.owner_id else order.item.owner
-    notify(other,ORDER_ACTIONS.get(action,action),f'/orders/{order.pk}/')
+    # Once accepted, the borrower's next step is paying the lender directly.
+    url=f'/orders/{order.pk}/pay/' if action=='accept' and order.total>0 else f'/orders/{order.pk}/'
+    notify(other,ORDER_ACTIONS.get(action,action),url)
 
 def item_terms(item):
     return {'title':item.title,'daily':str(item.daily),'deposit':str(item.deposit),'condition':item.condition,'location':item.location,'rules':RULES,'max_days':item.max_days}

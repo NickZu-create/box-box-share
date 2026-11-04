@@ -8,6 +8,13 @@ class ProfileAdmin(admin.ModelAdmin):
     readonly_fields=['user','verified','avatar']
     fields=['nickname','user','verified','restricted']
     search_fields=['nickname','user__email']
+@admin.register(PaymentCode)
+class PaymentCodeAdmin(admin.ModelAdmin):
+    list_display=['owner','channel','updated']
+    list_filter=['channel']
+    search_fields=['owner__email']
+    readonly_fields=['owner','channel','image','updated']
+    def has_add_permission(self,request): return False
 @admin.register(Item)
 class ItemAdmin(admin.ModelAdmin):
     list_display=['title','owner','status','created']

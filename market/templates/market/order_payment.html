@@ -1,0 +1,55 @@
+{% extends 'market/base.html' %}{% load static %}
+{% block title %}{% tr '付款' 'Payment' %} #{{ order.pk }} · {{ t.brand }}{% endblock %}
+{% block head %}<link rel="stylesheet" href="{% static 'market/payment.css' %}"><script src="{% static 'market/payment.js' %}" defer></script>{% endblock %}
+{% block content %}<section class="page narrow pay-page">
+<a class="breadcrumb" href="/orders/{{ order.pk }}/">← {% tr '借用訂單' 'Borrowing order' %} #{{ order.pk }}</a>
+<h1>{% tr '付款' 'Payment' %}</h1>
+<p class="hint">{{ order.snapshot.title }} · {% tr '付款給物主' 'Pay the lender' %} {{ order.item.owner.profile.nickname }}</p>
+{% if order.total <= 0 %}
+<div class="panel"><p>{% tr '此訂單無需付款。' 'No payment is needed for this order.' %}</p><a class="text-link" href="/orders/{{ order.pk }}/">{% tr '返回訂單' 'Back to order' %} →</a></div>
+{% else %}
+<div class="panel pay-summary">
+  <small>{% tr '應付總額' 'Total to pay' %}</small>
+  <strong class="pay-total">HK$ {{ order.total }}</strong>
+  <dl class="pay-breakdown"><dt>{% tr '租金' 'Rent' %}</dt><dd>HK$ {{ order.rent }}</dd><dt>{% tr '押金' 'Deposit' %}</dt><dd>HK$ {{ order.deposit }}</dd></dl>
+  {% if currencies %}<div class="pay-converter is-loading" data-pay-converter data-amount="{{ amount }}" data-rates-url="/fx/hkd/" data-failed="{% tr '匯率獲取失敗，請以港幣金額為準' 'Could not get the exchange rate. Please go by the HKD amount.' %}" data-updated="{% tr '更新於' 'Updated' %}" hidden>
+    <label for="pay-currency">{% tr '換算幣種' 'Convert to' %}</label>
+    <select id="pay-currency" disabled>{% for currency in currencies %}<option value="{{ currency }}">{% if currency == 'HKD' %}{% tr '港幣 HKD' 'HKD · Hong Kong dollar' %}{% else %}{% tr '人民幣 CNY' 'CNY · Chinese yuan' %}{% endif %}</option>{% endfor %}</select>
+    <div class="pay-converted"><span class="pay-spinner" aria-hidden="true"></span><output for="pay-currency" aria-live="polite" data-pay-converted>—</output></div>
+    <p class="pay-rate" data-pay-rate role="status"></p>
+    <small class="pay-rate-note">{% tr '匯率僅供參考，實際扣款以支付渠道結算匯率為準。' 'Exchange rate is for reference only. The actual charge follows the settlement rate of the payment channel.' %} <a href="https://www.exchangerate-api.com" target="_blank" rel="noopener noreferrer">Rates By Exchange Rate API</a></small>
+  </div>{% endif %}
+</div>
+<div class="panel pay-options">
+{% if wechat or alipay or fps %}
+  <h2>{% tr '選擇付款方式' 'Choose how to pay' %}</h2>
+  <div class="pay-buttons" data-pay-buttons>
+    {% if wechat %}<a class="pay-button pay-wechat" href="/media/payment/{{ wechat.pk }}/" data-pay-qr data-title="{% tr '微信支付' 'WeChat Pay' %}"><img src="{% static 'market/pay/wechat.svg' %}" alt="" width="24" height="24"><span>{% tr '微信支付' 'WeChat Pay' %}</span></a>{% endif %}
+    {% if alipay %}<details class="pay-menu" data-pay-menu>
+      <summary class="pay-button pay-alipay"><img src="{% static 'market/pay/alipay.svg' %}" alt="" width="24" height="24"><span>Alipay</span><i class="pay-chevron" aria-hidden="true"></i></summary>
+      <div class="pay-submenu">{% for code in alipay %}{% if code.channel == 'alipay_cn' %}<a class="pay-suboption pay-sub-cn" href="/media/payment/{{ code.pk }}/" data-pay-qr data-title="{% tr '支付寶（內地）' 'Alipay (Mainland)' %}"><img src="{% static 'market/pay/alipay-cn.svg' %}" alt="" width="24" height="24"><span>{% tr '支付寶（內地）' 'Alipay (Mainland)' %}</span></a>{% else %}<a class="pay-suboption pay-sub-hk" href="/media/payment/{{ code.pk }}/" data-pay-qr data-title="Alipay HK"><img src="{% static 'market/pay/alipay-hk.svg' %}" alt="" width="24" height="24"><span>{% tr 'Alipay HK（支付寶香港）' 'Alipay HK' %}</span></a>{% endif %}{% endfor %}</div>
+    </details>{% endif %}
+    {% if fps %}<a class="pay-button pay-fps" href="/media/payment/{{ fps.pk }}/" data-pay-qr data-title="{% tr 'FPS 轉數快' 'FPS' %}"><img src="{% static 'market/pay/fps.svg' %}" alt="" width="24" height="24"><span>{% tr 'FPS 轉數快' 'FPS' %}</span></a>{% endif %}
+  </div>
+  <p class="hint">{% tr '款項直接付給物主，平台不收款、不託管，也不會核實付款是否完成。' 'You pay the lender directly. The platform does not collect or hold money, and does not verify payments.' %}</p>
+  <a class="text-link" href="/orders/{{ order.pk }}/#payment-records">{% tr '我已付款，返回訂單確認' 'I have paid, back to confirm on the order' %} →</a>
+{% else %}
+  <p class="pay-empty">{% tr '暫無可用支付方式' 'No payment methods available' %}</p>
+  <p class="hint">{% tr '物主尚未上傳收款碼。可透過訊息聯絡物主。' 'The lender has not uploaded a payment code yet. You can message them.' %}</p>
+  <a class="text-link" href="/messages/{{ order.thread.pk }}/">{{ t.inbox }} →</a>
+{% endif %}
+</div>
+{% if wechat or alipay or fps %}<dialog class="pay-dialog" data-pay-dialog aria-labelledby="pay-dialog-title">
+  <div class="pay-dialog-body">
+    <button type="button" class="pay-dialog-close" data-pay-close aria-label="{% tr '關閉' 'Close' %}">×</button>
+    <h2 id="pay-dialog-title" data-pay-title></h2>
+    <p class="pay-dialog-amount">HK$ {{ order.total }}</p>
+    <div class="pay-qr-frame is-loading" data-pay-frame><span class="pay-spinner" aria-hidden="true"></span><img data-pay-image alt="{% tr '收款二維碼' 'Payment QR code' %}" hidden></div>
+    <p class="notice danger-notice" data-pay-error role="alert" hidden>{% tr '二維碼載入失敗，請關閉後再試。' 'Could not load the QR code. Close this and try again.' %}</p>
+    <p class="hint">{% tr '長按二維碼識別並跳轉付款。如未能跳轉，請保存圖片，再到相應 App 從相冊掃碼。' 'Press and hold the QR code to open the payment page. If that does not work, save the image and scan it from your photos in the app.' %}</p>
+    <a class="text-link" data-pay-save download="box-box-share-payment-qr.jpg" href="#">{% tr '保存二維碼' 'Save QR code' %} ↓</a>
+    <p class="hint pay-check">{% tr '付款前請核對收款人是否正確。' 'Check the recipient before you pay.' %}</p>
+  </div>
+</dialog>{% endif %}
+{% endif %}
+</section>{% endblock %}

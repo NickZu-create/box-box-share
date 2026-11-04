@@ -22,7 +22,7 @@ from .models import *
 from .forms import *
 from .services import *
 from .impact import impact_summary, METHOD_URL
-from . import ai, social, i18n, recommendations, university, groups
+from . import ai, social, i18n, recommendations, university, groups, payments
 
 def error(request,exc): messages.error(request,'; '.join(str(m) for m in exc.messages))
 def safe_next(request,fallback='/'):
@@ -187,7 +187,41 @@ def order_detail(request,pk):
             messages.success(request,'操作已記錄 / Confirmation recorded')
         except ValidationError as exc: error(request,exc)
         return redirect('order',pk=pk)
-    return render(request,'market/order.html',{'order':o,'owner':request.user.pk==o.item.owner_id,'reviewed':Review.objects.filter(order=o,author=request.user).exists(),'survey':o.surveys.first() if request.user.pk==o.borrower_id else None,'extension_rent':Decimal(o.snapshot['daily'])*interval(o.start,o.extension_end) if o.extension_end else None})
+    return render(request,'market/order.html',{'order':o,'owner':request.user.pk==o.item.owner_id,'reviewed':Review.objects.filter(order=o,author=request.user).exists(),'survey':o.surveys.first() if request.user.pk==o.borrower_id else None,'payable':o.status in payments.PAYABLE,'has_payment_codes':PaymentCode.objects.filter(owner_id=o.item.owner_id).exists(),'extension_rent':Decimal(o.snapshot['daily'])*interval(o.start,o.extension_end) if o.extension_end else None})
+
+@member
+def order_payment(request,pk):
+    o=get_object_or_404(Order.objects.select_related('item__owner__profile','borrower__profile'),pk=pk)
+    if request.user.pk not in (o.item.owner_id,o.borrower_id): raise PermissionDenied()
+    if request.user.pk!=o.borrower_id or o.status not in payments.PAYABLE: return redirect('order',pk=pk)
+    codes=payments.available_codes(o.item.owner)
+    alipay=[codes[channel] for channel in ('alipay_cn','alipay_hk') if channel in codes]
+    return render(request,'market/order_payment.html',{'order':o,'amount':str(o.total),'wechat':codes.get('wechat'),'alipay':alipay,'fps':codes.get('fps'),'currencies':payments.currencies_for(codes)})
+
+@member
+def fx_rates(request):
+    data=payments.hkd_rates()
+    if not data: return JsonResponse({'error':'unavailable'},status=503)
+    return JsonResponse(data)
+
+@member
+def payment_settings(request):
+    if request.method=='POST':
+        channel=request.POST.get('channel')
+        if channel not in dict(PAYMENT_CHANNELS): raise Http404()
+        try:
+            if request.POST.get('action')=='remove':
+                payments.remove_code(request.user,channel)
+                messages.success(request,'已移除收款碼 / Payment code removed')
+            else:
+                image=clean_image(request.FILES.get('photo'))
+                if not image: raise ValidationError('請先選擇圖片 / Choose an image first')
+                payments.save_code(request.user,channel,image)
+                messages.success(request,'已儲存收款碼 / Payment code saved')
+        except ValidationError as exc: error(request,exc)
+        return redirect('payment_settings')
+    codes={code.channel:code for code in request.user.payment_codes.all()}
+    return render(request,'market/payment_settings.html',{'rows':[{'channel':channel,'label':label,'code':codes.get(channel)} for channel,label in PAYMENT_CHANNELS]})
 
 @member
 @require_POST
@@ -456,6 +490,10 @@ def media(request,kind,pk):
         if post.owner.profile.restricted and request.user.pk!=post.owner_id and not request.user.is_staff: raise Http404()
         file=post.photo
     elif kind=='avatar': file=get_object_or_404(Profile,user_id=pk,restricted=False).avatar
+    elif kind=='payment':
+        code=get_object_or_404(PaymentCode.objects.select_related('owner__profile'),pk=pk)
+        if not payments.can_view(code,request.user): raise PermissionDenied()
+        file=code.image
     elif kind=='evidence':
         photo=get_object_or_404(Evidence.objects.select_related('order__item'),pk=pk)
         if not request.user.is_authenticated or (request.user.pk not in (photo.order.borrower_id,photo.order.item.owner_id) and not request.user.is_staff): raise PermissionDenied()

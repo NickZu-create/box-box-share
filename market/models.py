@@ -172,6 +172,8 @@ class Order(models.Model):
     class Meta:
         constraints = [models.CheckConstraint(condition=Q(end__gt=F('start')),name='positive_order_interval')]
     @property
+    def total(self): return self.rent+self.deposit
+    @property
     def overdue(self):
         if self.status in self.LOCKED and self.end < timezone.now():
             return math.ceil((timezone.now()-self.end).total_seconds()/3600)
@@ -265,3 +267,12 @@ class StoredFile(models.Model):
     content = models.BinaryField()
     size = models.PositiveIntegerField()
     created = models.DateTimeField(auto_now_add=True)
+# A lender's own receiving QR codes. The platform only shows them to the borrower; it never handles the money.
+PAYMENT_CHANNELS = [('wechat','微信支付 / WeChat Pay'),('alipay_cn','支付寶（內地） / Alipay (Mainland)'),('alipay_hk','Alipay HK（支付寶香港） / Alipay HK'),('fps','FPS 轉數快 / FPS')]
+class PaymentCode(models.Model):
+    owner = models.ForeignKey(User,on_delete=models.CASCADE,related_name='payment_codes')
+    channel = models.CharField(max_length=20,choices=PAYMENT_CHANNELS)
+    image = models.ImageField(upload_to='payment-codes/')
+    updated = models.DateTimeField(auto_now=True)
+    class Meta:
+        constraints=[models.UniqueConstraint(fields=['owner','channel'],name='one_payment_code_per_channel')]
