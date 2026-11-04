@@ -2,7 +2,7 @@
 
 面向 CityUHK 社群、學生營運的物品租借／求借平台第一版。不是學校官方平台，不代表學校認可。學校郵箱驗證只確認郵箱存取權，不代表在讀學籍已核實。
 
-**最新協作快照：本機檢查通過 114 項 Django 測試與 14 項演示規則測試。** 目前分支包含真實 Django 功能及合成靜態展示；兩者功能邊界、Windows/macOS 啟動方法和協作方式見 [COLLABORATION.md](COLLABORATION.md)。本次 GitHub 上傳未部署網站，也未變更 Render 或線上資料。手機真機、校園網絡及真實學校郵箱投遞仍待驗證。較早的 [測試報告](TEST-RESULTS.md) 和 [功能清單](FEATURES.md) 保留作歷史記錄；最新版介面檢查見 [experience review](output/experience-review/design-qa.md)。
+**目前版本：本機檢查通過 190 項 Django 測試。** 目前分支包含真實 Django 功能及合成靜態展示；兩者功能邊界、Windows/macOS 啟動方法和協作方式見 [COLLABORATION.md](COLLABORATION.md)。`main` 連接 Render 自動部署，推送後會上線。手機真機、校園網絡及真實學校郵箱投遞仍待驗證。較早的 [測試報告](TEST-RESULTS.md) 和 [功能清單](FEATURES.md) 保留作歷史記錄；最新版介面檢查見 [付款整合檢查](output/payment-review/design-qa.md)。
 
 ## 快速運行
 

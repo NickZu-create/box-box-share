@@ -8,11 +8,11 @@ from django.core.files.base import ContentFile
 from django.test import Client, TestCase, override_settings
 from django.utils import timezone
 
-from .models import Item, Notification, Order, PaymentCode
+from .models import Item, Notification, Order, PaymentCode, StoredFile
 from .services import act, apply
-from .tests import make_item, make_user, photo
+from .tests import DB_STORAGE, make_item, make_user, photo
 
-RATES = {'result':'success','time_last_update_unix':1793750551,'time_next_update_unix':int(time.time())+3600,'rates':{'HKD':1,'CNY':0.85192,'USD':0.128}}
+RATES = {'result':'success','base_code':'HKD','time_last_update_unix':1793750551,'time_next_update_unix':int(time.time())+3600,'rates':{'HKD':1,'CNY':0.85192,'USD':0.128}}
 
 class Response:
     def __init__(self,body): self.body=json.dumps(body).encode()
@@ -99,7 +99,7 @@ class PaymentPage(PaymentBase):
         self.assertContains(self.b.get(self.url),'pay-empty')
     def test_three_languages(self):
         self.code();self.accept()
-        for lang,text in (('en','WeChat Pay'),('zh','應付總額'),('hans','应付总额')):
+        for lang,text in (('en','Order charges'),('zh','訂單費用總額'),('hans','订单费用总额')):
             self.b.post('/language/',{'lang':lang})
             self.assertContains(self.b.get(self.url),text)
     def test_order_page_links_and_lender_reminder(self):
@@ -113,6 +113,60 @@ class PaymentPage(PaymentBase):
     def test_rules_page_explains_direct_payment(self):
         self.b.post('/language/',{'lang':'en'})
         self.assertContains(self.b.get('/rules/'),'does not verify whether a payment was made')
+    def test_existing_confirmations_do_not_become_an_outstanding_balance(self):
+        self.code();self.accept();self.b.post('/language/',{'lang':'en'})
+        for user in (self.owner,self.borrower):
+            for action in ('rent','deposit'): act(self.order.pk,user,action)
+        fields=('status','rent_owner','rent_borrower','deposit_owner','deposit_borrower')
+        before=Order.objects.filter(pk=self.order.pk).values(*fields).get()
+        page=self.b.get(self.url)
+        self.assertTrue(page.context['both_payment_confirmations'])
+        self.assertContains(page,'Order charges');self.assertNotContains(page,'Total to pay')
+        self.assertContains(page,'data-pay-confirmed');self.assertContains(page,'avoid duplicate payments')
+        self.assertContains(page,'Both confirmed (self-reported)',count=2)
+        # QR viewing remains available without changing self-reported confirmations or order state.
+        self.assertContains(page,'data-pay-qr')
+        self.assertEqual(Order.objects.filter(pk=self.order.pk).values(*fields).get(),before)
+    def test_one_sided_confirmation_identifies_each_party_without_subtraction(self):
+        self.code();self.accept();self.b.post('/language/',{'lang':'en'})
+        act(self.order.pk,self.borrower,'rent');act(self.order.pk,self.owner,'deposit')
+        page=self.b.get(self.url)
+        self.assertFalse(page.context['both_payment_confirmations'])
+        self.assertContains(page,'Borrower confirmed; lender has not confirmed')
+        self.assertContains(page,'Lender confirmed; borrower has not confirmed')
+        self.assertEqual(page.context['amount'],str(self.order.total))
+        self.assertNotContains(page,'data-pay-confirmed')
+    def test_extension_keeps_confirmation_context_without_claiming_remaining_due(self):
+        self.code();self.accept();self.b.post('/language/',{'lang':'en'})
+        for user in (self.owner,self.borrower):
+            for action in ('rent','deposit'): act(self.order.pk,user,action)
+        old_total=self.order.total
+        act(self.order.pk,self.borrower,'extend',new_end=self.order.end+timedelta(days=1))
+        act(self.order.pk,self.owner,'approve_extension');self.order.refresh_from_db()
+        page=self.b.get(self.url)
+        self.assertGreater(self.order.total,old_total)
+        self.assertEqual(page.context['amount'],str(self.order.total))
+        self.assertTrue(page.context['both_payment_confirmations'])
+        self.assertContains(page,'extra rent from extensions')
+        self.assertContains(page,'does not record amounts paid or calculate the remaining balance')
+
+@override_settings(STORAGES=DB_STORAGE)
+class DatabasePaymentCodes(PaymentBase):
+    def test_private_database_storage_upload_view_replace_remove(self):
+        self.a.post('/profile/payment/',{'channel':'fps','photo':photo()})
+        code=PaymentCode.objects.get(owner=self.owner,channel='fps');old_name=code.image.name
+        self.assertTrue(StoredFile.objects.filter(name=old_name).exists())
+        self.accept()
+        response=self.b.get(f'/media/payment/{code.pk}/')
+        self.assertEqual(response.status_code,200);self.assertTrue(response.getvalue())
+        self.assertEqual(response['Cache-Control'],'private, no-store')
+        with self.captureOnCommitCallbacks(execute=True):
+            self.a.post('/profile/payment/',{'channel':'fps','photo':photo()})
+        code.refresh_from_db();self.assertNotEqual(old_name,code.image.name)
+        self.assertFalse(StoredFile.objects.filter(name=old_name).exists())
+        with self.captureOnCommitCallbacks(execute=True):
+            self.a.post('/profile/payment/',{'channel':'fps','action':'remove'})
+        self.assertFalse(PaymentCode.objects.exists());self.assertFalse(StoredFile.objects.exists())
 
 class PaymentCodeAccess(PaymentBase):
     def setUp(self):
@@ -157,3 +211,21 @@ class ExchangeRates(PaymentBase):
             cache.clear()
             with mock.patch('market.payments.urlopen',return_value=Response(body)):
                 self.assertEqual(self.b.get('/fx/hkd/').status_code,503)
+    def test_wrong_base_and_invalid_rates_use_the_failure_fallback(self):
+        invalid=[{**RATES,'base_code':'USD'},{**RATES,'rates':{'HKD':2,'CNY':1}}]
+        invalid += [{**RATES,'rates':{'HKD':1,'CNY':value}} for value in ('NaN','Infinity','not-a-rate','1E9999','1E-9999',0,-1)]
+        for body in invalid:
+            with self.subTest(body=body):
+                cache.clear()
+                with mock.patch('market.payments.urlopen',return_value=Response(body)) as request:
+                    self.assertEqual(self.b.get('/fx/hkd/').status_code,503)
+                    self.assertEqual(self.b.get('/fx/hkd/').status_code,503)
+                self.assertEqual(request.call_count,1)
+    def test_invalid_update_timestamps_never_escape_as_server_errors(self):
+        invalid=[{**RATES,'time_next_update_unix':value} for value in ('invalid',None,float('inf'),0)]
+        invalid += [{**RATES,'time_last_update_unix':value} for value in ('invalid',None,int(time.time())+10000)]
+        for body in invalid:
+            with self.subTest(body=body):
+                cache.clear()
+                with mock.patch('market.payments.urlopen',return_value=Response(body)):
+                    self.assertEqual(self.b.get('/fx/hkd/').status_code,503)

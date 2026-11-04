@@ -8,6 +8,11 @@
 
   document.addEventListener('click',event=>{closeMenus(menus.find(menu=>menu.contains(event.target)));});
   for(const menu of menus)menu.addEventListener('toggle',()=>{if(menu.open)closeMenus(menu);});
+  document.addEventListener('keydown',event=>{
+    if(event.key!=='Escape')return;
+    const openMenu=menus.find(menu=>menu.open);
+    if(openMenu){closeMenus();openMenu.querySelector('summary')?.focus();}
+  });
 
   const dialog=document.querySelector('[data-pay-dialog]');
   if(dialog){
@@ -68,6 +73,7 @@
   };
   const render=()=>{
     const currency=select.value,rate=Number(rates[currency]);
+    if(!Number.isFinite(rate)||rate<=0||!Number.isFinite(amount*rate)){fail();return;}
     animateTo(amount*rate,currency);
     const parts=[];
     if(currency!=='HKD')parts.push(`1 HKD = ${rates[currency]} ${currency}`);

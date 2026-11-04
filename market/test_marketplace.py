@@ -210,6 +210,21 @@ class Purchase(Base):
         pay = self.b.get(f'/orders/{order.pk}/pay/')
         self.assertContains(pay, 'Pay the seller'); self.assertNotContains(pay, 'pay-breakdown')
 
+    def test_payment_confirmations_read_as_a_purchase(self):
+        self.b.post('/language/', {'lang': 'en'})
+        PaymentCode.objects.create(owner=self.seller, channel='fps', image='payment-codes/x.jpg')
+        order = buy(self.item.pk, self.buyer)
+        act(order.pk, self.seller, 'rent')
+        page = self.b.get(f'/orders/{order.pk}/pay/')
+        self.assertContains(page, 'Seller confirmed; buyer has not confirmed')
+        self.assertContains(page, 'You pay the seller directly'); self.assertContains(page, 'This is the order price')
+        self.assertNotContains(page, 'data-confirmation="deposit"'); self.assertNotContains(page, 'pay-breakdown')
+        self.assertEqual(page.context['payment_confirmations'][0]['key'], 'rent'); self.assertEqual(len(page.context['payment_confirmations']), 1)
+        act(order.pk, self.buyer, 'rent')
+        self.assertContains(self.b.get(f'/orders/{order.pk}/pay/'), 'data-pay-confirmed')
+        order_page = self.b.get(f'/orders/{order.pk}/')
+        self.assertContains(order_page, 'The buyer pays the seller directly'); self.assertContains(order_page, 'Seller')
+
     def test_purchase_not_counted_as_avoided_purchase(self):
         order = buy(self.item.pk, self.buyer); act(order.pk, self.buyer, 'handover'); act(order.pk, self.seller, 'handover')
         self.assertEqual(impact_summary()['borrows'], 0)

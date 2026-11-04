@@ -10,6 +10,7 @@ from marketplace_demo import decorate,finalize
 from student_preview import finalize_student
 from group_preview import finalize_groups
 from experience_preview import finalize_experience
+from payment_preview import finalize_payments
 ROOT=Path(__file__).resolve().parent.parent
 SRC=ROOT/'output/showcase-baseline' if (ROOT/'output/showcase-baseline').exists() else ROOT/'public-demo/dist';OUT=ROOT/'output/design-preview'
 HK=timezone(timedelta(hours=8));NOW=datetime.now(HK);CC=OpenCC('s2t')
@@ -198,5 +199,6 @@ if __name__=='__main__':
  finalize(OUT,tr,ico,version)
  finalize_student(OUT,tr,version)
  finalize_groups(OUT,tr,version)
+ finalize_payments(OUT,tr,version)
  finalize_experience(OUT,tr,version)
  print(OUT)

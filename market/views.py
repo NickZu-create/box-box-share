@@ -230,7 +230,7 @@ def order_payment(request,pk):
     if request.user.pk!=o.borrower_id or o.status not in payments.PAYABLE: return redirect('order',pk=pk)
     codes=payments.available_codes(o.item.owner)
     alipay=[codes[channel] for channel in ('alipay_cn','alipay_hk') if channel in codes]
-    return render(request,'market/order_payment.html',{'order':o,'amount':str(o.total),'wechat':codes.get('wechat'),'alipay':alipay,'fps':codes.get('fps'),'currencies':payments.currencies_for(codes)})
+    return render(request,'market/order_payment.html',{'order':o,'amount':str(o.total),'wechat':codes.get('wechat'),'alipay':alipay,'fps':codes.get('fps'),'currencies':payments.currencies_for(codes),**payments.confirmation_context(o)})
 
 @member
 def fx_rates(request):

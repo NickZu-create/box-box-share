@@ -45,6 +45,6 @@ a copied link; there is no WeChat integration.
 
 ## Not verified
 
-- PostgreSQL: migration `0010` and the purchase race have only run on SQLite here.
+- PostgreSQL: migration `0010` has run on the live database, but the purchase race has only been tested on SQLite.
 - Real phones and in-app browsers, including press-and-hold on QR codes.
 - Messages still need a manual refresh, as before.
