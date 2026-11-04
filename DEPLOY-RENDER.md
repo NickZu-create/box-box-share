@@ -61,3 +61,10 @@
 ## 之後更新
 
 推送到 GitHub 的 main 分支後，Render 會自動重新部署。資料庫結構的變更（migration）會在啟動時自動執行（見 `render-start.sh`）。
+
+## 翻譯帖子和聊天
+
+- 繁體和簡體之間的轉換在本站完成，不需要任何設定。
+- 中英翻譯使用 AI 物品描述的同一個接口。要開啟的話，在 Render → Environment 設定 `AI_API_KEY`。沒有設定時，帖子和訊息顯示原文，「翻譯」按鈕也不會出現。
+- 預設供應商是智譜 AI（中國內地）。公開帖子會自動發送翻譯，私訊只有在用戶選擇翻譯時才發送，翻譯結果不會儲存在伺服器。換供應商：設定 `AI_BASE_URL`、`AI_TRANSLATE_MODEL` 和 `AI_PROVIDER_LABEL`（任何 OpenAI 格式的接口都可以）。
+- 用量上限：`TRANSLATE_HOURLY_LIMIT`（每位用戶或每個 IP，每小時呼叫次數，預設 120）和 `TRANSLATE_DAILY_LIMIT`（全站每天，預設 3000）。

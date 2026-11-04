@@ -72,6 +72,11 @@ AI_API_KEY = os.getenv('AI_API_KEY','')
 AI_BASE_URL = os.getenv('AI_BASE_URL','https://open.bigmodel.cn/api/paas/v4').rstrip('/')
 AI_MODEL = os.getenv('AI_MODEL','glm-4.6v-flash')
 AI_TIMEOUT = int(os.getenv('AI_TIMEOUT','60'))
+# Translating posts and chosen chat messages. Shorter than gunicorn's 60 seconds so a slow model cannot kill a worker.
+AI_TRANSLATE_MODEL = os.getenv('AI_TRANSLATE_MODEL','') or AI_MODEL
+AI_TRANSLATE_TIMEOUT = int(os.getenv('AI_TRANSLATE_TIMEOUT','40'))
+TRANSLATE_HOURLY_LIMIT = int(os.getenv('TRANSLATE_HOURLY_LIMIT','120'))
+TRANSLATE_DAILY_LIMIT = int(os.getenv('TRANSLATE_DAILY_LIMIT','3000'))
 # Zhipu's docs send raw base64; most other OpenAI-style providers expect a data: URI (set 1).
 AI_IMAGE_DATA_URI = os.getenv('AI_IMAGE_DATA_URI','0') == '1'
 # Shown to users before they upload, because photos leave this server.

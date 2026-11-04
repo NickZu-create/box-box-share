@@ -1,0 +1,27 @@
+/* Translated posts and chat messages */
+.tx-lines{white-space:pre-line}
+.tx-bar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:4px 12px;max-width:1216px;margin:12px auto 0;padding:8px 14px;border:1px solid #eedce3;border-radius:10px;background:#fdf4f6;color:var(--bb-muted,#75666c);font-size:12px;line-height:1.5}
+.tx-bar[hidden]{display:none}
+.tx-bar button{flex-shrink:0;padding:0;border:0;background:none;color:#b72755;font-size:12px;font-weight:600;cursor:pointer}
+
+.chat-translate{display:flex;flex-direction:column;gap:2px;margin:0 0 10px;padding:8px 12px;border-radius:10px;background:#fdf4f6;font-size:12px;line-height:1.5;color:var(--bb-muted,#75666c)}
+.chat-translate[hidden]{display:none}
+.chat-translate-toggle{display:flex;align-items:center;gap:8px;font-weight:600;color:var(--bb-ink,#35202a);cursor:pointer}
+.chat-translate-toggle input{width:16px;height:16px;margin:0;accent-color:#b72755}
+.chat-translate small{font-size:11px}
+.bubble-translate{display:block;margin:4px 0 0;padding:0;border:0;background:none;color:#b72755;font-size:11px;font-weight:600;cursor:pointer}
+.bubble-translate:disabled{color:var(--bb-muted,#75666c);cursor:default}
+.bubble .bubble-translation{margin:6px 0 0;padding-top:6px;border-top:1px dashed #e7c9d2}
+.bubble .bubble-translation[hidden]{display:none}
+
+/* Payment methods on a listing */
+.tile-pay{display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin:6px 0 0;font-size:12px;color:var(--bb-muted,#75666c)}
+.tile-pay img{width:18px;height:18px;border-radius:4px;object-fit:contain}
+/* This mark is white, drawn for a coloured background. */
+.pay-mark-wechat{background:#07c160;padding:2px}
+.item-payment{margin:18px 0}
+.item-payment h2{margin:0 0 8px;font-size:15px}
+.item-payment-list{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 8px;padding:0;list-style:none}
+.item-payment-list li{display:inline-flex;align-items:center;gap:7px;padding:6px 11px 6px 8px;border:1px solid #eedce3;border-radius:999px;background:#fff;font-size:13px}
+.item-payment-list img{width:22px;height:22px;border-radius:5px;object-fit:contain}
+.item-payment .hint{margin:0;font-size:12px}

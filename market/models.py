@@ -61,6 +61,13 @@ class Item(models.Model):
     def __str__(self): return self.title
     @property
     def is_sale(self): return self.intent=='sale'
+    @property
+    def needs_payment(self): return self.daily>0 or (not self.is_sale and self.deposit>0)
+    @property
+    def payment_methods(self):
+        # Channel names only. The QR images stay behind payments.can_view.
+        accepted={code.channel for code in self.owner.payment_codes.all()}
+        return [{'channel':channel,'label':label,'icon':PAYMENT_ICONS[channel]} for channel,label in PAYMENT_CHANNELS if channel in accepted]
 class ItemPhoto(models.Model):
     item = models.ForeignKey(Item,on_delete=models.CASCADE,related_name='photos')
     image = models.ImageField(upload_to='items/')
@@ -292,6 +299,7 @@ class StoredFile(models.Model):
     created = models.DateTimeField(auto_now_add=True)
 # A lender's own receiving QR codes. The platform only shows them to the borrower; it never handles the money.
 PAYMENT_CHANNELS = [('wechat','微信支付 / WeChat Pay'),('alipay_cn','支付寶（內地） / Alipay (Mainland)'),('alipay_hk','Alipay HK（支付寶香港） / Alipay HK'),('fps','FPS 轉數快 / FPS')]
+PAYMENT_ICONS = {'wechat':'wechat.svg','alipay_cn':'alipay-cn.svg','alipay_hk':'alipay-hk.png','fps':'fps.png'}
 class PaymentCode(models.Model):
     owner = models.ForeignKey(User,on_delete=models.CASCADE,related_name='payment_codes')
     channel = models.CharField(max_length=20,choices=PAYMENT_CHANNELS)
@@ -299,3 +307,12 @@ class PaymentCode(models.Model):
     updated = models.DateTimeField(auto_now=True)
     class Meta:
         constraints=[models.UniqueConstraint(fields=['owner','channel'],name='one_payment_code_per_channel')]
+
+# Machine translations of public posts, keyed by a hash of the source text. Private messages are never stored.
+class ContentTranslation(models.Model):
+    source_hash = models.CharField(max_length=64)
+    lang = models.CharField(max_length=8)
+    text = models.TextField()
+    created = models.DateTimeField(auto_now_add=True)
+    class Meta:
+        constraints=[models.UniqueConstraint(fields=['source_hash','lang'],name='one_translation_per_language')]

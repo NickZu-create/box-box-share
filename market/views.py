@@ -22,7 +22,7 @@ from .models import *
 from .forms import *
 from .services import *
 from .impact import impact_summary, METHOD_URL
-from . import ai, social, i18n, recommendations, university, groups, payments
+from . import ai, social, i18n, recommendations, university, groups, payments, translate
 
 def message_rows(me):
     # Conversation list for the Messages sidebar, most recently active first.
@@ -61,7 +61,7 @@ def home(request):
         else: rows=rows.none(); messages.error(request,'請輸入有效日期 / Enter valid dates')
     rows=rows.order_by('-created','-pk')
     has_filters=any(request.GET.get(key) for key in ('q','category','price','start','end','intent'))
-    return render(request,'market/home.html',{'has_filters':has_filters,'rows':rows.select_related('owner__profile').prefetch_related('photos')[:100] if not wanted else rows.select_related('owner__profile')[:100],'wanted':wanted,'intent':intent,'categories':CATEGORIES,'date_form':dates})
+    return render(request,'market/home.html',{'has_filters':has_filters,'rows':rows.select_related('owner__profile').prefetch_related('photos','owner__payment_codes')[:100] if not wanted else rows.select_related('owner__profile')[:100],'wanted':wanted,'intent':intent,'categories':CATEGORIES,'date_form':dates})
 
 def signin(request):
     if request.method=='POST':
@@ -92,6 +92,11 @@ def language(request):
     response=redirect(safe_next(request))
     response.set_cookie(i18n.COOKIE,lang,max_age=365*86400,samesite='Lax',secure=request.is_secure(),httponly=True)
     return response
+
+@require_POST
+def translate_content(request):
+    try: return JsonResponse(translate.fulfil(request.POST.getlist('ref'),request.user,request.lang,client_ip(request)))
+    except ValidationError as exc: return JsonResponse({'error':'; '.join(exc.messages),'translations':{},'retry':[],'failed':True},status=429)
 
 @member
 def item_edit(request,pk=None):

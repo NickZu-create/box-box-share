@@ -1,6 +1,6 @@
 {% extends 'market/base.html' %}
 {% load static %}
-{% block title %}{{ post.title }} · {% tr '失物招領' 'Lost & Found' %}{% endblock %}
+{% block title %}{% tx post 'title' plain=True %} · {% tr '失物招領' 'Lost & Found' %}{% endblock %}
 {% block content %}
 <link rel="stylesheet" href="{% static 'market/lostfound.css' %}">
 <section class="page lf-page">
@@ -8,10 +8,10 @@
   <div class="lf-detail-grid">
     <div class="panel lf-detail">
       <div class="pill-row"><span class="pill {% if post.kind == 'lost' %}lf-lost-pill{% endif %}">{{ post.get_kind_display|loc }}</span><span class="pill soft">{{ post.get_category_display|loc }}</span><span class="status {% if post.status == 'resolved' %}completed{% endif %}">{{ post.get_status_display|loc }}</span></div>
-      <h1>{{ post.title }}</h1>
-      {% if post.photo %}<div class="lf-detail-photo"><img src="/media/lostfound/{{ post.pk }}/" alt="{{ post.title }}"></div>{% endif %}
-      <p class="lf-body">{{ post.description|linebreaksbr }}</p>
-      <dl class="facts"><dt>{% if post.kind == 'lost' %}{% tr '遺失時間' 'Lost on' %}{% else %}{% tr '拾獲時間' 'Found on' %}{% endif %}</dt><dd>{{ post.occurred_at|date:'Y-m-d H:i' }}</dd><dt>{% tr '地點' 'Place' %}</dt><dd>{{ post.location }}</dd>{% if post.color %}<dt>{% tr '顏色' 'Colour' %}</dt><dd>{{ post.color }}</dd>{% endif %}<dt>{% tr '發布時間' 'Posted on' %}</dt><dd>{{ post.created|date:'Y-m-d H:i' }}</dd></dl>
+      <h1>{% tx post 'title' %}</h1>
+      {% if post.photo %}<div class="lf-detail-photo"><img src="/media/lostfound/{{ post.pk }}/" alt="{% tx post 'title' plain=True %}"></div>{% endif %}
+      <p class="lf-body">{% tx post 'description' lines=True %}</p>
+      <dl class="facts"><dt>{% if post.kind == 'lost' %}{% tr '遺失時間' 'Lost on' %}{% else %}{% tr '拾獲時間' 'Found on' %}{% endif %}</dt><dd>{{ post.occurred_at|date:'Y-m-d H:i' }}</dd><dt>{% tr '地點' 'Place' %}</dt><dd>{% tx post 'location' %}</dd>{% if post.color %}<dt>{% tr '顏色' 'Colour' %}</dt><dd>{% tx post 'color' %}</dd>{% endif %}<dt>{% tr '發布時間' 'Posted on' %}</dt><dd>{{ post.created|date:'Y-m-d H:i' }}</dd></dl>
       <p class="hint">{{ t.timezone }}</p>
       <a class="owner-box" href="/people/{{ post.owner_id }}/"><span class="avatar">{{ post.owner.profile.nickname|first }}</span><span><strong>{{ post.owner.profile.nickname }}</strong><small>{% if post.kind == 'lost' %}{% tr '失主' 'Owner looking for an item' %}{% else %}{% tr '拾獲者' 'Finder' %}{% endif %}</small></span></a>
     </div>

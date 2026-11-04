@@ -533,10 +533,10 @@ class Languages(TestCase):
         # The choice survives signing out (the session is flushed; the cookie stays).
         self.c.post('/language/',{'lang':'hans'});self.c.post('/logout/')
         self.assertContains(self.c.get('/'),'lang="zh-Hans"')
-    def test_messages_errors_notifications_translated_but_user_text_untouched(self):
+    def test_messages_errors_notifications_and_user_text_follow_the_language(self):
         BuddyPost.objects.create(owner=make_user('poster'),category='buddy',kind='study',title='溫書搭子 國際',description='一起溫書',starts=soon(),location='圖書館',capacity=2)
         self.c.post('/language/',{'lang':'hans'})
-        page=self.c.get('/buddy/').content.decode();self.assertIn('溫書搭子 國際',page);self.assertIn('学习',page)
+        page=self.c.get('/buddy/').content.decode();self.assertIn('温书搭子 国际',page);self.assertNotIn('溫書搭子',page);self.assertIn('学习',page)
         r=self.c.post('/buddy/new/',{'category':'buddy','kind':'study','title':'x','description':'x','starts':'2000-01-01T10:00','location':'x','capacity':'1'})
         self.assertContains(r,'开始时间须在未来');self.assertNotContains(r,'Must be in the future')
         other=make_user('friendly');logged_in(other).post(f'/people/{self.u.pk}/friend/',{'action':'request'})

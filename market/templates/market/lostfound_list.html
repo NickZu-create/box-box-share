@@ -40,12 +40,12 @@
 
   <div class="lf-result-heading"><h2>{% if request.GET.kind == 'lost' %}{% tr '他們正在尋找' 'Someone is looking for these' %}{% else %}{% tr '等待主人認領' 'Waiting to be reunited' %}{% endif %}</h2><span class="hint">{% tr '目前顯示' 'Showing' %} {{ rows|length }} {% tr '則資訊' 'notices' %}</span></div>
   <div class="lf-grid">
-    {% for row in rows %}
+    {% tx_prime rows %}{% for row in rows %}
     <a class="wanted-card lf-card" href="/lost-found/{{ row.pk }}/">
-      {% if row.photo %}<img class="lf-card-photo" src="/media/lostfound/{{ row.pk }}/" alt="{{ row.title }}" loading="lazy">{% endif %}
+      {% if row.photo %}<img class="lf-card-photo" src="/media/lostfound/{{ row.pk }}/" alt="{% tx row 'title' plain=True %}" loading="lazy">{% endif %}
       <div class="lf-card-top"><span class="pill {% if row.kind == 'lost' %}lf-lost-pill{% endif %}">{{ row.get_kind_display|loc }}</span><span class="status {% if row.status == 'resolved' %}completed{% endif %}">{{ row.get_status_display|loc }}</span></div>
-      <span class="lf-category">{{ row.get_category_display|loc }}</span><h3>{{ row.title }}</h3><p class="lf-description">{{ row.description|truncatechars:110 }}</p>
-      <dl class="lf-card-facts"><dt>{% if row.kind == 'lost' %}{% tr '遺失時間' 'Lost on' %}{% else %}{% tr '拾獲時間' 'Found on' %}{% endif %}</dt><dd>{{ row.occurred_at|date:'m/d H:i' }}</dd><dt>{% tr '地點' 'Place' %}</dt><dd>{{ row.location }}</dd>{% if row.color %}<dt>{% tr '顏色' 'Colour' %}</dt><dd>{{ row.color }}</dd>{% endif %}</dl>
+      <span class="lf-category">{{ row.get_category_display|loc }}</span><h3>{% tx row 'title' %}</h3><p class="lf-description">{% tx row 'description' truncate=110 %}</p>
+      <dl class="lf-card-facts"><dt>{% if row.kind == 'lost' %}{% tr '遺失時間' 'Lost on' %}{% else %}{% tr '拾獲時間' 'Found on' %}{% endif %}</dt><dd>{{ row.occurred_at|date:'m/d H:i' }}</dd><dt>{% tr '地點' 'Place' %}</dt><dd>{% tx row 'location' %}</dd>{% if row.color %}<dt>{% tr '顏色' 'Colour' %}</dt><dd>{% tx row 'color' %}</dd>{% endif %}</dl>
       <div class="card-bottom"><span class="avatar tiny">{{ row.owner.profile.nickname|first }}</span>{{ row.owner.profile.nickname }}<span class="arrow" aria-hidden="true">→</span></div>
     </a>
     {% empty %}

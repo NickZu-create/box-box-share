@@ -6,7 +6,7 @@ from django.utils import translation
 # Three interface languages on top of the existing mechanism: {% tr '繁中' 'English' %} in templates and
 # "繁中 / English" strings in Python. Simplified Chinese is generated from the Traditional text with OpenCC,
 # so every page, form, message and notification gets it without a third copy of each string.
-# User-written content is never passed through here.
+# User-written content goes through translate.py, which uses hans() and hant() from here.
 LANGUAGES = [('en','English'),('zh','繁體中文'),('hans','简体中文')]
 CODES = {code for code,_ in LANGUAGES}
 HTML_LANG = {'en':'en','zh':'zh-Hant','hans':'zh-Hans'}
@@ -27,6 +27,17 @@ def hans(text):
     out = _converter().convert(text)
     for old, new in WORDING: out = out.replace(old, new)
     return out
+
+@lru_cache(maxsize=1)
+def _to_traditional():
+    import opencc
+    return opencc.OpenCC('s2hk')
+
+@lru_cache(maxsize=8192)
+def hant(text):
+    # Only text that really is Simplified changes: Traditional text could otherwise lose rare characters.
+    if _converter().convert(text)!=text: return text
+    return _to_traditional().convert(text)
 
 def zh(text, lang):
     return hans(text) if lang=='hans' else text
