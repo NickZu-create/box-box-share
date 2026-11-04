@@ -1,10 +1,23 @@
+from datetime import timedelta
 from django import template
+from django.utils import timezone
 from django.forms.utils import flatatt
 from django.utils.html import format_html
 from market import ai, i18n, translate
 register=template.Library()
 @register.simple_tag(takes_context=True)
 def tr(context,zh,en): return i18n.tr(zh,en,context.get('lang'))
+def chat_day(value):
+    day=timezone.localtime(value).date()
+    today=timezone.localdate()
+    if day==today: return i18n.loc('今天 / Today')
+    if day==today-timedelta(days=1): return i18n.loc('昨天 / Yesterday')
+    return f'{day.year}/{day.month:02d}/{day.day:02d}' if day.year!=today.year else f'{day.month}/{day.day}'
+register.filter('chat_day',chat_day)
+@register.filter
+def chat_time(value):
+    # Today shows the time, like a phone's chat list; anything older shows the day.
+    return timezone.localtime(value).strftime('%H:%M') if timezone.localtime(value).date()==timezone.localdate() else chat_day(value)
 # For system text stored or defined as "繁中 / English": choice labels, notifications, flash messages.
 @register.filter
 def loc(text): return i18n.loc(text)

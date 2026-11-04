@@ -8,11 +8,14 @@ from django.conf import settings
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.files.base import ContentFile
-from django.core.mail import send_mail
+import hmac, logging
+from django.core.mail import EmailMultiAlternatives
+from django.template.loader import render_to_string
 from django.db import transaction
 from django.utils import timezone
 from .models import *
 
+log = logging.getLogger(__name__)
 RULES = 'HKD; ceil(hours/24); offline payment; no escrow; bilateral handover and return confirmation. Cancellation before handover releases the reservation. Damage/overdue disputes require evidence and mutual agreement; no automatic fees.'
 def member(view):
     @login_required
@@ -42,17 +45,26 @@ def throttle(key,limit,seconds):
     if b.count >= limit: raise ValidationError('Too many requests. Try later / 請稍後再試')
     b.count+=1; b.save()
 
-def send_login(email,ip,origin,next_url=''):
+def send_email(subject,text,template,context,to):
+    message=EmailMultiAlternatives(subject,text,settings.DEFAULT_FROM_EMAIL,[to])
+    message.attach_alternative(render_to_string(template,context),'text/html')
+    message.send(fail_silently=False)
+
+def code_digest(email,code): return hmac.new(settings.SECRET_KEY.encode(),f'{email}:{code}'.encode(),hashlib.sha256).hexdigest()
+
+def send_login(email,ip,origin,next_url='',lang=''):
     # Only trust the proxy's client-IP header when the app is reachable solely through that proxy.
     throttle('ip:'+ip,20,3600)
     email=valid_email(email)
     throttle('minute:'+email,1,60)
     throttle('email:'+email,5,3600)
     raw=secrets.token_urlsafe(32)
-    token=LoginToken.objects.create(email=email,digest=hashlib.sha256(raw.encode()).hexdigest(),expires=timezone.now()+timedelta(minutes=15),next_url=next_url[:300])
-    url=origin+'/verify/'+raw+'/'
+    code=f'{secrets.randbelow(1000000):06d}'
+    token=LoginToken.objects.create(email=email,digest=hashlib.sha256(raw.encode()).hexdigest(),expires=timezone.now()+timedelta(minutes=15),next_url=next_url[:300],code_digest=code_digest(email,code))
+    # The language travels with the link, because the mail app may open it in another browser.
+    url=origin+'/verify/'+raw+'/'+(f'?lang={lang}' if lang else '')
     try:
-        send_mail('Box Box Share · 學校郵箱登入 / Sign in',f'登入連結 / Sign-in link (15 minutes, single use):\n{url}\n\n由 Box Box 營運，並非 CityUHK 官方平台。We never ask for your school password.',settings.DEFAULT_FROM_EMAIL,[email],fail_silently=False)
+        send_email(f'{code} 是你的 Box Box Share 驗證碼 / is your sign-in code',f'在登入頁輸入驗證碼 / Enter this code on the sign-in page: {code}\n\n在另一部裝置上，可用這條連結登入 / On another device, sign in with this link (15 minutes, single use):\n{url}\n\n由 Box Box 營運，並非 CityUHK 官方平台。We never ask for your school password.','market/email_login.html',{'url':url,'code':code},email)
     except Exception:
         token.delete()
         raise ValidationError('Email service unavailable / 郵件服務暫時無法使用')
@@ -61,6 +73,23 @@ def send_login(email,ip,origin,next_url=''):
 def consume_token(raw):
     token=LoginToken.objects.select_for_update().filter(digest=hashlib.sha256(raw.encode()).hexdigest(),used=False,expires__gt=timezone.now()).first()
     if not token: raise ValidationError('Expired or used link / 連結過期或已使用')
+    return finish_login(token)
+
+def consume_code(email,code,ip):
+    # Returns (user, where to go next). Five wrong tries end this code; the attempt survives the error below.
+    throttle('code:'+ip,30,300)
+    email=email.strip().lower()
+    code=''.join(code.split())
+    with transaction.atomic():
+        token=LoginToken.objects.select_for_update().filter(email=email,used=False,expires__gt=timezone.now()).exclude(code_digest='').order_by('-pk').first()
+        if token and hmac.compare_digest(token.code_digest,code_digest(email,code)): return finish_login(token),token.next_url
+        if token:
+            token.code_attempts+=1
+            if token.code_attempts>=5: token.used=True
+            token.save(update_fields=['code_attempts','used'])
+    raise ValidationError('驗證碼不正確或已過期 / Wrong or expired code')
+
+def finish_login(token):
     valid_email(token.email)
     user,_=User.objects.get_or_create(username=token.email,defaults={'email':token.email})
     p,_=Profile.objects.get_or_create(user=user)
@@ -95,15 +124,20 @@ def availability(item,start,end,exclude=None):
         raise ValidationError('Reservation overlaps / 與已接受預約重疊')
     return days
 
-def notify(user,text,url): Notification.objects.create(user=user,text=text,url=url)
+def notification_kind(url):
+    if url.startswith('/orders/'): return 'request'
+    if url.startswith(('/wanted/','/items/','/lost-found/')): return 'item'
+    if url.startswith(('/buddy/','/messages/','/people/')): return 'friend'
+    return 'system'
+def notify(user,text,url,kind=None,detail=''): Notification.objects.create(user=user,text=text,url=url,kind=kind or notification_kind(url),detail=detail[:200])
 # Order steps are recorded by key; people see a label in their language (old notifications hold the bare key).
-ORDER_ACTIONS={'accept':'物主已接受申請 / Application accepted','cancel':'預約已取消 / Booking cancelled','handover':'已確認交接 / Handover confirmed','return':'已確認歸還 / Return confirmed','rent':'已確認租金 / Rent confirmed','deposit':'已確認押金 / Deposit confirmed','refund':'已確認退還押金 / Deposit refund confirmed','extend':'申請延期 / Extension requested','approve_extension':'已批准延期 / Extension approved','reject_extension':'已拒絕延期 / Extension declined','dispute':'已提出糾紛 / Dispute opened','buy':'有人購買了你的物品 / Your item was purchased'}
-def event(order,actor,action,data=None):
+ORDER_ACTIONS={'accept':'物主已接受申請 / Application accepted','cancel':'預約已取消 / Booking cancelled','decline':'物主未接受申請 / Application declined','handover':'已確認交接 / Handover confirmed','return':'已確認歸還 / Return confirmed','rent':'已確認租金 / Rent confirmed','deposit':'已確認押金 / Deposit confirmed','refund':'已確認退還押金 / Deposit refund confirmed','extend':'申請延期 / Extension requested','approve_extension':'已批准延期 / Extension approved','reject_extension':'已拒絕延期 / Extension declined','dispute':'已提出糾紛 / Dispute opened','buy':'有人購買了你的物品 / Your item was purchased'}
+def event(order,actor,action,data=None,detail=''):
     Audit.objects.create(order=order,actor=actor,action=action,data=data or {})
     other=order.borrower if actor.pk==order.item.owner_id else order.item.owner
     # Once accepted, the borrower's next step is paying the lender directly.
     url=f'/orders/{order.pk}/pay/' if action=='accept' and order.total>0 else f'/orders/{order.pk}/'
-    notify(other,ORDER_ACTIONS.get(action,action),url)
+    notify(other,ORDER_ACTIONS.get(action,action),url,'item' if order.is_purchase else 'request',detail)
 
 def derive_title(description):
     # The first sentence of the description, so a listing only needs a price and a description.
@@ -129,8 +163,27 @@ def apply(item_id,user,start,end,expected=None):
     if expected and expected['fingerprint']!=terms_fingerprint(item): raise ValidationError('Listing terms changed. Check the new quote / 物品價格或條款已更改，請重新確認費用')
     o=Order.objects.create(item=item,borrower=user,start=start,end=end,rent=item.daily*days,deposit=item.deposit,snapshot={**item_terms(item),'days':days})
     Thread.objects.create(order=o,first=user,second=item.owner)
-    event(o,user,'申請借用 / Application submitted')
+    event(o,user,'申請借用 / Application submitted',detail=f'{user.profile.nickname} · {item.title}')
     return o
+
+def email_owner_about_request(order,origin):
+    # A reminder only: its failure never fails the request, and its links only open pages, because mail
+    # scanners follow links. Capped so one applicant cannot flood an owner or use up the day's mail.
+    owner=order.item.owner
+    if not owner.profile.request_emails: return False
+    try:
+        throttle(f'request-email:{order.borrower_id}:{owner.pk}',1,600)
+        throttle('request-email:everyone',80,86400)
+    except ValidationError: return False
+    title=' '.join((order.snapshot.get('title') or order.item.title).split())[:60]
+    context={'applicant':order.borrower.profile.nickname,'title':title,'total':order.total,'start':timezone.localtime(order.start).strftime('%Y-%m-%d %H:%M'),'end':timezone.localtime(order.end).strftime('%Y-%m-%d %H:%M'),'order_url':f'{origin}/orders/{order.pk}/','chat_url':f'{origin}/messages/{order.thread.pk}/','profile_url':f'{origin}/profile/'}
+    text=f"{context['applicant']} 想借用你的物品 / wants to borrow your item: {title}\n{context['start']} – {context['end']} · HK$ {order.total}\n\n查看並處理申請 / Review the request:\n{context['order_url']}\n\n與申請人聊天 / Chat with the applicant:\n{context['chat_url']}\n\n連結只會打開頁面，不會自動接受或拒絕。/ Links only open the page; nothing is accepted or declined automatically.\n不想再收到？在個人資料關閉 / Turn these emails off in your profile: {context['profile_url']}"
+    try:
+        send_email(f'Box Box Share · 新借用申請 / New borrow request: {title}',text,'market/email_request.html',context,owner.email)
+        return True
+    except Exception as exc:
+        log.error('Borrow request email failed for order %s: %s',order.pk,type(exc).__name__)
+        return False
 
 @transaction.atomic
 def buy(item_id,user):
@@ -148,7 +201,7 @@ def buy(item_id,user):
     o=Order.objects.create(kind='purchase',item=item,borrower=user,start=now,end=now+timedelta(days=30),status='accepted',rent=item.daily,deposit=0,snapshot={**item_terms(item),'days':0})
     item.status='sold'; item.save(update_fields=['status'])
     Thread.objects.create(order=o,first=user,second=item.owner)
-    event(o,user,'buy')
+    event(o,user,'buy',detail=f'{user.profile.nickname} · {item.title}')
     return o
 
 def release_sale(order,item):
@@ -169,6 +222,9 @@ def act(order_id,user,action,new_end=None,photo=None):
         if not owner or o.status!='pending': raise ValidationError('Invalid action / 操作不適用')
         if o.start<timezone.now(): raise ValidationError('Application start has passed / 開始時間已過')
         availability(item,o.start,o.end,exclude=o.pk); o.status='accepted'
+    elif action=='decline':
+        if not owner or o.status!='pending': raise ValidationError('Invalid action / 操作不適用')
+        o.status='cancelled'
     elif action=='cancel':
         if o.status not in ('pending','accepted') or o.hand_owner or o.hand_borrower: raise ValidationError('After handover starts, open a dispute / 交接開始後請提出糾紛')
         o.status='cancelled'; release_sale(o,item)
@@ -232,7 +288,7 @@ def resolve_dispute(order_id,admin_user,outcome):
     o.status=outcome; o.save()
     if outcome=='cancelled': release_sale(o,o.item)
     Audit.objects.create(order=o,actor=admin_user,action='管理員解決糾紛 / Moderator resolution',data={'outcome':outcome})
-    for person in (o.item.owner,o.borrower): notify(person,'糾紛已處理 / Dispute resolved',f'/orders/{o.pk}/')
+    for person in (o.item.owner,o.borrower): notify(person,'糾紛已處理 / Dispute resolved',f'/orders/{o.pk}/','system')
 
 
 def client_ip(request):

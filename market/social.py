@@ -111,7 +111,7 @@ def request_friend(sender,recipient):
     throttle('friend:'+str(sender.pk),20,86400)
     if f: f.delete()  # they turned you down earlier and you are now the one asking: start fresh
     f=Friendship.objects.create(sender=sender,recipient=recipient)
-    notify(recipient,'收到好友申請 / New friend request','/messages/#friends')
+    notify(recipient,'收到好友申請 / New friend request','/messages/friends/')
     return f
 
 @transaction.atomic
@@ -150,7 +150,8 @@ CONTACT_FIELDS = [('whatsapp','WhatsApp','WhatsApp'),('phone','電話','Phone'),
 def contacts_unlocked(thread):
     # Both people must have taken part: four messages from one side never reveal anything.
     senders=set(); count=0
-    for sender,text in thread.messages.values_list('sender_id','text'):
+    pair=Q(thread__first_id=thread.first_id,thread__second_id=thread.second_id)|Q(thread__first_id=thread.second_id,thread__second_id=thread.first_id)
+    for sender,text in Message.objects.filter(pair,recalled=False).values_list('sender_id','text'):
         if text.strip():
             count+=1; senders.add(sender)
     return count>=CONTACT_MESSAGES and {thread.first_id,thread.second_id}<=senders,min(count,CONTACT_MESSAGES)

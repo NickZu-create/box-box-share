@@ -51,6 +51,8 @@ ALLOWED_EMAIL_DOMAINS = os.getenv('ALLOWED_EMAIL_DOMAINS','my.cityu.edu.hk').low
 SESSION_COOKIE_HTTPONLY = True
 SESSION_COOKIE_SAMESITE = 'Lax'
 SESSION_COOKIE_AGE = 60*60*24*7
+# Ticking "remember me" keeps that device signed in this long; otherwise the session ends with the browser.
+REMEMBER_DEVICE_SECONDS = 60*60*24*180
 SESSION_COOKIE_SECURE = not DEBUG
 CSRF_COOKIE_SECURE = not DEBUG
 SECURE_SSL_REDIRECT = not DEBUG

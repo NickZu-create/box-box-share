@@ -1,0 +1,1 @@
+<span class="unread-badge" data-unread-badge {% if not unread.total %}hidden{% endif %} aria-label="{% tr '未讀' 'Unread' %} {{ unread.total }}">{% if unread.total > 99 %}99+{% else %}{{ unread.total }}{% endif %}</span>

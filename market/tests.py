@@ -1,6 +1,7 @@
 import re, tempfile, shutil, base64, json
 from concurrent.futures import ThreadPoolExecutor
 from unittest import mock
+from market import inbox
 from urllib.error import HTTPError
 from datetime import timedelta
 from decimal import Decimal
@@ -186,8 +187,9 @@ class CampusFlow(TestCase):
         self.assertEqual(self.c.post(f'/wanted/{wanted.pk}/',{'item':self.item.pk}).status_code,404)
         self.b.post(f'/items/{self.item.pk}/contact/');thread=Thread.objects.get(item=self.item)
         self.b.post(f'/messages/{thread.pk}/',{'text':'Hello <script>alert(1)</script>'})
+        self.assertEqual(inbox.counts(self.owner)['item'],1)
         self.assertContains(self.a.get(f'/messages/{thread.pk}/'),'&lt;script&gt;')
-        self.assertTrue(Notification.objects.filter(user=self.owner).exists())
+        self.assertEqual(inbox.counts(self.owner)['item'],0)
     def test_dispute_resolution_requires_admin_and_bilateral_return(self):
         o=self.booking();act(o.pk,self.owner,'accept');act(o.pk,self.owner,'handover');act(o.pk,self.borrower,'handover');act(o.pk,self.borrower,'dispute')
         with self.assertRaises(PermissionDenied): resolve_dispute(o.pk,self.owner,'completed')
@@ -332,7 +334,7 @@ class ResendMail(TestCase):
     def test_login_link_sent_through_api(self):
         with mock.patch('market.mail.urlopen') as urlopen:
             r=Client().post('/login/',{'email':'amy@my.cityu.edu.hk'})
-        self.assertContains(r,'已建立登入郵件，請查收')
+        self.assertContains(r,'驗證碼已發送，請查收')
         req=urlopen.call_args.args[0];body=json.loads(req.data)
         self.assertEqual((req.full_url,req.get_header('Authorization')),('https://api.resend.com/emails','Bearer re_test'))
         self.assertEqual((body['to'],body['from']),(['amy@my.cityu.edu.hk'],'Box Box Share <onboarding@resend.dev>'))
@@ -478,12 +480,12 @@ class Friends(TestCase):
     def test_request_accept_chat_remove(self):
         self.act(self.ca,self.b,'request');self.act(self.ca,self.b,'request')
         self.assertEqual(Friendship.objects.get().status,'pending');self.assertEqual(Notification.objects.filter(user=self.b,text__contains='好友申請').count(),1)
-        inbox=self.cb.get('/messages/').content.decode();self.assertIn('好友申請',inbox);self.assertIn('alice',inbox)
+        inbox=self.cb.get('/messages/friends/').content.decode();self.assertIn('好友申請',inbox);self.assertIn('alice',inbox)
         self.assertEqual(self.act(self.ca,self.b,'chat').status_code,403)
         self.act(self.cc,self.b,'accept');self.assertEqual(Friendship.objects.get().status,'pending')
         self.act(self.cb,self.a,'accept');self.assertEqual(Friendship.objects.get().status,'accepted')
         self.assertEqual(Notification.objects.filter(user=self.a,text__contains='已獲接受').count(),1)
-        self.assertContains(self.ca.get('/messages/'),f'/people/{self.b.pk}/')
+        self.assertContains(self.ca.get('/messages/friends/'),f'/people/{self.b.pk}/')
         r=self.act(self.ca,self.b,'chat');thread=Thread.objects.get(item=None,order=None,buddy=None)
         self.assertRedirects(r,f'/messages/{thread.pk}/');self.assertEqual(self.act(self.cb,self.a,'chat').url,f'/messages/{thread.pk}/')
         self.ca.post(f'/messages/{thread.pk}/',{'text':'Lunch?'});self.cb.post(f'/messages/{thread.pk}/',{'text':'Sure'})

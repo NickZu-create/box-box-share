@@ -100,9 +100,9 @@ def _private(kind,pk,user):
     if not is_member(user): return None
     if kind=='message':
         message=Message.objects.select_related('thread').filter(pk=pk).first()
-        return message.text if message and user.pk in (message.thread.first_id,message.thread.second_id) else None
+        return message.text if message and not message.recalled and user.pk in (message.thread.first_id,message.thread.second_id) else None
     message=BuddyGroupMessage.objects.select_related('group__post__owner__profile').filter(pk=pk).first()
-    if message is None: return None
+    if message is None or message.recalled: return None
     try: row=groups.membership(message.group,user)
     except PermissionDenied: return None
     return message.text if groups.visible_messages(message.group,user,row).filter(pk=pk).exists() else None

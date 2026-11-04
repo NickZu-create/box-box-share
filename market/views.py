@@ -17,18 +17,145 @@ from django.urls import reverse
 from django.utils import timezone
 from django.utils.dateparse import parse_date
 from datetime import datetime, time
-from django.views.decorators.http import require_POST
+from django.template.loader import render_to_string
+from django.utils.html import format_html
+from .templatetags.ui import chat_day
+from django.views.decorators.http import require_GET, require_POST
 from .models import *
 from .forms import *
 from .services import *
 from .impact import impact_summary, METHOD_URL
 from . import ai, social, i18n, recommendations, university, groups, payments, translate
+from . import chatlines
+from . import inbox as inbox_data
 
-def message_rows(me):
-    # Conversation list for the Messages sidebar, most recently active first.
-    latest=Message.objects.filter(thread=OuterRef('pk')).order_by('-created','-pk')
-    threads=Thread.objects.filter(Q(first=me)|Q(second=me)).select_related('item','order__item','buddy','lostfound','wanted','first__profile','second__profile').annotate(last_text=Subquery(latest.values('text')[:1]),last_at=Subquery(latest.values('created')[:1])).order_by(F('last_at').desc(nulls_last=True),'-pk')
-    return [{'thread':t,'other':t.second if t.first_id==me.pk else t.first,'preview':t.last_text,'stamp':t.last_at} for t in threads]
+def feed_context(request,thread=None,group=None):
+    # The Messages sidebar: one row per person, a filter, and one row for notifications.
+    me=request.user
+    tab=request.GET.get('tab')
+    if tab not in inbox_data.FILTERS: tab='all'
+    numbers=inbox_data.counts(me)
+    person=(thread.second_id if thread.first_id==me.pk else thread.first_id) if thread else None
+    return {'feed':inbox_data.tab_rows(inbox_data.feed_rows(me,request.lang),tab),'tab':tab,'tabs':inbox_data.tabs(request.lang,numbers,tab),'notes_row':inbox_data.notes_row(me,numbers) if tab=='all' else None,'current_thread':thread.pk if thread else None,'current_person':person,'current_group':group.pk if group else None}
+
+def can_poll(user):
+    if not user.is_authenticated or not hasattr(user,'profile') or not user.profile.verified or user.profile.restricted: return False
+    try: valid_email(user.email)
+    except ValidationError: return False
+    return True
+
+@require_GET
+def notifications_poll(request):
+    # 401 rather than a sign-in redirect: the page's script stops asking.
+    if not can_poll(request.user): return JsonResponse({'error':'sign-in'},status=401)
+    response=JsonResponse(inbox_data.poll(request.user,request.GET,request.lang))
+    response['Cache-Control']='no-store'
+    return response
+
+@member
+@require_GET
+def inbox_feed(request):
+    thread=group=None
+    if request.GET.get('current','').isdigit(): thread=inbox_data.my_threads(request.user).filter(pk=int(request.GET['current'])).first()
+    if request.GET.get('group','').isdigit(): group=BuddyGroup.objects.filter(pk=int(request.GET['group'])).first()
+    response=render(request,'market/_message_feed.html',feed_context(request,thread,group))
+    response['Cache-Control']='no-store'
+    return response
+
+@member
+def notifications_page(request):
+    me=request.user
+    kind=request.POST.get('kind') if request.method=='POST' else request.GET.get('kind')
+    if kind not in inbox_data.KINDS: kind=''
+    rows=Notification.objects.filter(user=me,**({'kind':kind} if kind else {}))
+    if request.method=='POST':
+        rows.filter(read=False).update(read=True)
+        return redirect(f'/notifications/?kind={kind}' if kind else '/notifications/')
+    return render(request,'market/notifications.html',{'notes':rows.order_by('-created','-pk')[:inbox_data.FEED_NOTES],'kind':kind,'kinds':inbox_data.note_kinds(me,request.lang,kind),'has_unread':rows.filter(read=False).exists()})
+
+@member
+def friends_page(request):
+    me=request.user
+    friendships=Friendship.objects.filter(Q(sender=me)|Q(recipient=me)).select_related('sender__profile','recipient__profile').order_by('-created')
+    friends=[(f,f.recipient if f.sender_id==me.pk else f.sender) for f in friendships if f.status=='accepted' and not social.is_blocked(f.sender,f.recipient)]
+    return render(request,'market/friends.html',{'friends':friends,'blocked_users':User.objects.filter(pk__in=UserBlock.objects.filter(blocker=me).values('blocked_id')).select_related('profile'),'incoming':[f for f in friendships if f.status=='pending' and f.recipient_id==me.pk],'outgoing':[f for f in friendships if f.status=='pending' and f.sender_id==me.pk]})
+
+@member
+def notification_open(request,pk):
+    note=get_object_or_404(Notification,pk=pk,user=request.user)
+    if not note.read: Notification.objects.filter(pk=note.pk).update(read=True)
+    # Older friend-request notes point at where that list used to be.
+    if note.url=='/messages/#friends': return redirect('friends_page')
+    return redirect(note.url if note.url.startswith('/') and not note.url.startswith('//') else '/messages/')
+
+def newer_than(request):
+    value=request.GET.get('after','')
+    return int(value) if value.isdigit() else 0
+
+def bubbles(request,rows,template,previous=None):
+    # Rendered like the page itself, including a date line when the day turns over.
+    parts=[]
+    day=chat_day(previous.created) if previous else None
+    for m in rows:
+        if chat_day(m.created)!=day:
+            day=chat_day(m.created)
+            parts.append(format_html('<div class="day-sep"><span>{}</span></div>',day))
+        parts.append(render_to_string(template,{'m':m},request=request))
+    return ''.join(parts)
+
+def recalled_lines(request,rows,template):
+    # Messages recalled lately, so a page that is already open replaces them.
+    since=timezone.now()-timedelta(minutes=15)
+    return {str(m.pk):render_to_string(template,{'m':m},request=request) for m in rows.filter(recalled=True,recalled_at__gte=since)}
+
+@member
+@require_GET
+def thread_new(request,pk):
+    thread=get_object_or_404(Thread,pk=pk)
+    me=request.user
+    if me.pk not in (thread.first_id,thread.second_id): raise PermissionDenied()
+    threads=chatlines.conversation_threads(me,thread.second_id if thread.first_id==me.pk else thread.first_id)
+    visible=Message.objects.filter(thread__in=threads).select_related('sender__profile','reply_to__sender__profile')
+    after=newer_than(request)
+    rows=list(visible.filter(pk__gt=after).order_by('pk')[:100])
+    inbox_data.mark_conversation_read(threads,me)
+    response=JsonResponse({'html':bubbles(request,rows,'market/_bubble.html',visible.filter(pk=after).first()),'last':rows[-1].pk if rows else after,'recalled':recalled_lines(request,visible.filter(pk__lte=after),'market/_bubble.html'),'unread':inbox_data.counts(me)})
+    response['Cache-Control']='no-store'
+    return response
+
+@member
+@require_GET
+def group_new(request,pk):
+    group=get_object_or_404(BuddyGroup.objects.select_related('post__owner__profile'),pk=pk)
+    row=groups.membership(group,request.user)
+    visible=groups.visible_messages(group,request.user,row).select_related('reply_to__sender__profile')
+    after=newer_than(request)
+    rows=list(visible.filter(pk__gt=after).order_by('pk')[:100])
+    inbox_data.mark_group_read(group,request.user,row)
+    response=JsonResponse({'html':bubbles(request,rows,'market/_group_bubble.html',visible.filter(pk=after).first()),'last':rows[-1].pk if rows else after,'recalled':recalled_lines(request,visible.filter(pk__lte=after),'market/_group_bubble.html'),'unread':inbox_data.counts(request.user)})
+    response['Cache-Control']='no-store'
+    return response
+
+@member
+@require_POST
+def line_action(request,kind,pk):
+    _,back=chatlines.find_line(kind,pk,request.user)
+    try:
+        if request.POST.get('action')!='recall': raise Http404()
+        chatlines.recall(kind,pk,request.user)
+    except ValidationError as exc: error(request,exc)
+    return redirect(back)
+
+@member
+def line_forward(request,kind,pk):
+    line,back=chatlines.find_line(kind,pk,request.user)
+    if request.method=='POST':
+        try: return redirect(chatlines.forward(kind,pk,request.user,request.POST.get('target','')))
+        except ValidationError as exc:
+            error(request,exc)
+            return redirect(back)
+    if line.recalled: raise Http404()
+    return render(request,'market/forward.html',{'line':line,'back':back,'targets':inbox_data.forward_targets(request.user)})
 
 def error(request,exc): messages.error(request,'; '.join(str(m) for m in exc.messages))
 def safe_next(request,fallback='/'):
@@ -63,20 +190,51 @@ def home(request):
     has_filters=any(request.GET.get(key) for key in ('q','category','price','start','end','intent'))
     return render(request,'market/home.html',{'has_filters':has_filters,'rows':rows.select_related('owner__profile').prefetch_related('photos','owner__payment_codes')[:100] if not wanted else rows.select_related('owner__profile')[:100],'wanted':wanted,'intent':intent,'categories':CATEGORIES,'date_form':dates})
 
+def start_session(request,user):
+    login(request,user,backend='django.contrib.auth.backends.ModelBackend')
+    request.session.set_expiry(settings.REMEMBER_DEVICE_SECONDS if request.POST.get('remember') else 0)
+
 def signin(request):
+    sent_to=''
     if request.method=='POST':
         try:
-            send_login(request.POST.get('email',''),client_ip(request),request.build_absolute_uri('/').rstrip('/'),safe_next(request,''))
-            messages.success(request,'已建立登入郵件，請查收。 / Sign-in email created. Check your inbox.' if settings.MAIL_LIVE else '開發模式：登入郵件已寫入伺服器 dev-mail 目錄，未發送到學校郵箱。 / Development only: message saved to server dev-mail; not delivered.')
+            send_login(request.POST.get('email',''),client_ip(request),request.build_absolute_uri('/').rstrip('/'),safe_next(request,''),request.lang)
+            sent_to=request.POST.get('email','').strip().lower()
+            messages.success(request,'驗證碼已發送，請查收。 / Code sent. Check your email.' if settings.MAIL_LIVE else '開發模式：登入郵件已寫入伺服器 dev-mail 目錄，未發送到學校郵箱。 / Development only: message saved to server dev-mail; not delivered.')
         except ValidationError as exc: error(request,exc)
-    return render(request,'market/login.html',{'next':safe_next(request,'')})
+    return render(request,'market/login.html',{'next':safe_next(request,''),'sent_to':sent_to})
+
+@require_POST
+def signin_code(request):
+    email=request.POST.get('email','')
+    try:
+        user,target=consume_code(email,request.POST.get('code',''),client_ip(request))
+        start_session(request,user)
+        return redirect(target or 'home')
+    except (ValidationError,PermissionDenied) as exc:
+        if isinstance(exc,ValidationError): error(request,exc)
+        else: messages.error(request,'此帳號無法登入 / This account cannot sign in')
+    return render(request,'market/login.html',{'next':safe_next(request,''),'sent_to':email.strip().lower()})
 
 def verify(request,raw):
+    # Mail apps may open this in another browser, so bring the chosen language along.
+    lang=request.GET.get('lang')
+    if lang in i18n.CODES and lang!=request.lang:
+        request.session['lang']=lang
+        response=redirect(request.get_full_path())
+        response.set_cookie(i18n.COOKIE,lang,max_age=31536000,samesite='Lax')
+        return response
+    # Already signed in as this person, the link only needs to take them on. A mail scanner is never signed in.
+    if request.method=='GET' and request.user.is_authenticated:
+        token=LoginToken.objects.filter(digest=hashlib.sha256(raw.encode()).hexdigest(),used=False,expires__gt=timezone.now(),email=request.user.email).first()
+        if token:
+            LoginToken.objects.filter(pk=token.pk).update(used=True)
+            return redirect(token.next_url or 'home')
     if request.method=='POST':
         try:
             throttle('verify:'+client_ip(request),30,300)
             target=LoginToken.objects.filter(digest=hashlib.sha256(raw.encode()).hexdigest()).values_list('next_url',flat=True).first()
-            user=consume_token(raw); login(request,user,backend='django.contrib.auth.backends.ModelBackend')
+            user=consume_token(raw); start_session(request,user)
             return redirect(target or 'home')
         except ValidationError as exc: error(request,exc)
     return render(request,'market/verify.html')
@@ -153,7 +311,7 @@ def item_detail(request,pk):
                     try: expected=signing.loads(request.POST.get('quote_token',''),salt='booking-quote',max_age=900)
                     except signing.BadSignature: raise ValidationError('Check price again before applying / 請先重新計算費用')
                     if expected['item']!=item.pk or expected['start']!=payload['start'] or expected['end']!=payload['end']: raise ValidationError('Dates changed. Check price again / 日期已更改，請重新計算費用')
-                    o=apply(item.pk,request.user,form.cleaned_data['start'],form.cleaned_data['end'],expected=expected); return redirect('order',pk=o.pk)
+                    o=apply(item.pk,request.user,form.cleaned_data['start'],form.cleaned_data['end'],expected=expected); email_owner_about_request(o,request.build_absolute_uri('/').rstrip('/')); return redirect('order',pk=o.pk)
             except ValidationError as exc: form.add_error(None,exc)
     return render(request,'market/item.html',{'item':item,'form':form,'quote':quote,'quote_token':quote_token})
 
@@ -226,6 +384,8 @@ def order_detail(request,pk):
             messages.success(request,'操作已記錄 / Confirmation recorded')
         except ValidationError as exc: error(request,exc)
         return redirect('order',pk=pk)
+    # Seeing the order is seeing what its notifications were about.
+    Notification.objects.filter(user=request.user,url__startswith=f'/orders/{pk}/',read=False).update(read=True)
     return render(request,'market/order.html',{'order':o,'owner':request.user.pk==o.item.owner_id,'reviewed':Review.objects.filter(order=o,author=request.user).exists(),'survey':o.surveys.first() if request.user.pk==o.borrower_id else None,'payable':o.status in payments.PAYABLE,'has_payment_codes':PaymentCode.objects.filter(owner_id=o.item.owner_id).exists(),'extension_rent':Decimal(o.snapshot['daily'])*interval(o.start,o.extension_end) if o.extension_end else None})
 
 @member
@@ -273,7 +433,7 @@ def review(request,pk):
             if o.status!='completed' or Review.objects.filter(order=o,author=request.user).exists(): raise ValidationError('Review only once after completion / 完成訂單後可評價一次')
             recipient=o.borrower if request.user.pk==o.item.owner_id else o.item.owner
             r=Review(order=o,author=request.user,recipient=recipient,rating=request.POST.get('rating'),text=request.POST.get('text',''))
-            r.full_clean(); r.save(); notify(recipient,'收到新評價 / New review',f'/people/{recipient.pk}/')
+            r.full_clean(); r.save(); notify(recipient,'收到新評價 / New review',f'/people/{recipient.pk}/','system')
     except ValidationError as exc: error(request,exc)
     return redirect('order',pk=pk)
 
@@ -293,14 +453,7 @@ def survey(request,pk):
 
 @member
 def inbox(request):
-    me=request.user
-    threads=Thread.objects.filter(Q(first=me)|Q(second=me)).select_related('item','order__item','buddy','lostfound','wanted','first__profile','second__profile').order_by('-pk')
-    notifications=Notification.objects.filter(user=me).order_by('-created')[:100]
-    if request.method=='POST': Notification.objects.filter(user=me).update(read=True); return redirect('inbox')
-    friendships=Friendship.objects.filter(Q(sender=me)|Q(recipient=me)).select_related('sender__profile','recipient__profile').order_by('-created')
-    friends=[(f,f.recipient if f.sender_id==me.pk else f.sender) for f in friendships if f.status=='accepted' and not social.is_blocked(f.sender,f.recipient)]
-    return render(request,'market/inbox.html',{'threads':threads,'thread_rows':message_rows(me),'group_memberships':groups.active_memberships(me),'notifications':notifications,'friends':friends,'blocked_users':User.objects.filter(pk__in=UserBlock.objects.filter(blocker=me).values('blocked_id')).select_related('profile'),
-        'incoming':[f for f in friendships if f.status=='pending' and f.recipient_id==me.pk],'outgoing':[f for f in friendships if f.status=='pending' and f.sender_id==me.pk]})
+    return render(request,'market/inbox.html',feed_context(request))
 
 @member
 @require_POST
@@ -315,23 +468,23 @@ def chat(request,pk):
     thread=get_object_or_404(Thread.objects.select_related('first__profile','second__profile','item','order__item','buddy','lostfound','wanted'),pk=pk)
     if request.user.pk not in (thread.first_id,thread.second_id): raise PermissionDenied()
     other=thread.second if thread.first_id==request.user.pk else thread.first
-    open_=social.can_message(thread,request.user)
+    threads=list(chatlines.conversation_threads(request.user,other.pk).select_related('item','order__item','buddy','lostfound','wanted').order_by('-pk'))
+    send_to=chatlines.writable_thread(threads,thread,request.user)
     if request.method=='POST':
-        text=request.POST.get('text','').strip()
         try:
-            with transaction.atomic():
-                # Use the same lock order as blocking, so a block cannot race a new message.
-                list(Profile.objects.select_for_update().filter(user__in=[request.user,other]).order_by('pk'))
-                if not social.can_message(thread,request.user): raise ValidationError('此對話已關閉 / This conversation is closed')
-                throttle('message:'+str(request.user.pk),30,60)
-                if not text or len(text)>2000: raise ValidationError('1–2000 characters / 請輸入 1–2000 字')
-                Message.objects.create(thread=thread,sender=request.user,text=text)
-                if not Notification.objects.filter(user=other,url=f'/messages/{thread.pk}/',read=False).exists(): notify(other,'收到新訊息 / New message',f'/messages/{thread.pk}/')
+            if send_to is None: raise ValidationError('此對話已關閉 / This conversation is closed')
+            image=clean_image(request.FILES.get('image'))
+            if image: chatlines.check_image_quota(request.user)
+            chatlines.post_private(send_to,request.user,request.POST.get('text',''),image,chatlines.reply_target(request.POST.get('reply_to'),send_to,request.user))
         except ValidationError as exc: error(request,exc)
         return redirect('thread',pk=pk)
-    return render(request,'market/chat.html',{'thread':thread,'open':open_,'other':other,'contacts':social.contact_state(thread,request.user),'thread_rows':message_rows(request.user),'current_thread':thread.pk,'group_memberships':groups.active_memberships(request.user),
+    inbox_data.mark_conversation_read(threads,request.user)
+    chat_messages=chatlines.timeline(threads,request.user)
+    # The top card follows what the conversation is currently about.
+    about=thread if thread.order_id or thread.item_id else next((t for t in threads if t.order_id or t.item_id),thread)
+    return render(request,'market/chat.html',{**feed_context(request,thread),'thread':thread,'open':send_to is not None,'other':other,'contacts':social.contact_state(thread,request.user),'card':inbox_data.chat_card(about,request.user,request.lang),'last_message_id':max((m.pk for m in chat_messages if not m.__class__ is Order),default=0),
         'blocked':social.is_blocked(request.user,other),'blocked_by_me':UserBlock.objects.filter(blocker=request.user,blocked=other).exists(),
-        'chat_messages':list(reversed(thread.messages.select_related('sender__profile').order_by('-created','-pk')[:300]))})
+        'chat_messages':chat_messages})
 
 @member
 def profile_edit(request):
@@ -362,14 +515,18 @@ def group_chat(request,pk):
         try:
             if request.POST.get('action')=='leave':
                 groups.leave(pk,request.user);return redirect('buddy',pk=group.post_id)
-            elif request.POST.get('action')=='send': groups.send(pk,request.user,request.POST.get('text',''))
+            elif request.POST.get('action')=='send':
+                image=clean_image(request.FILES.get('image'))
+                if image: chatlines.check_image_quota(request.user)
+                groups.send(pk,request.user,request.POST.get('text',''),image=image,reply_to=chatlines.group_reply_target(request.POST.get('reply_to'),group,request.user,row))
             else: raise Http404()
         except ValidationError as exc: error(request,exc)
         return redirect('group_chat',pk=pk)
     roster=[r for r in group.memberships.filter(left_at__isnull=True).select_related('user__profile') if groups.eligible(group,r.user)]
-    return render(request,'market/group_chat.html',{'group':group,'membership':row,'roster':roster,
-        'group_memberships':groups.active_memberships(request.user),
-        'chat_messages':list(reversed(groups.visible_messages(group,request.user,row).order_by('-pk')[:300]))})
+    inbox_data.mark_group_read(group,request.user,row)
+    chat_messages=list(reversed(groups.visible_messages(group,request.user,row).select_related('reply_to__sender__profile').order_by('-pk')[:300]))
+    return render(request,'market/group_chat.html',{**feed_context(request,group=group),'group':group,'membership':row,'roster':roster,'last_message_id':max((m.pk for m in chat_messages),default=0),
+        'chat_messages':chat_messages})
 
 def person(request,pk):
     person=get_object_or_404(Profile.objects.select_related('user'),user_id=pk,restricted=False)
@@ -537,6 +694,11 @@ def media(request,kind,pk):
         photo=get_object_or_404(Evidence.objects.select_related('order__item'),pk=pk)
         if not request.user.is_authenticated or (request.user.pk not in (photo.order.borrower_id,photo.order.item.owner_id) and not request.user.is_staff): raise PermissionDenied()
         file=photo.image
+    elif kind in ('message','groupmessage'):
+        if not request.user.is_authenticated: raise PermissionDenied()
+        line,_=chatlines.find_line('message' if kind=='message' else 'group',pk,request.user)
+        if line.recalled: raise Http404()
+        file=line.image
     else: raise Http404()
     if not file: raise Http404()
     response=FileResponse(file.open('rb'),content_type='image/jpeg')

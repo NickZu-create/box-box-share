@@ -95,7 +95,8 @@
     if(line)line.hidden=true;
     setButton(button,'hidden',text.translate);
   }
-  buttons.forEach(function(button){
+  function bindMessage(button){
+    if(button.hasAttribute('data-state'))return;
     var ref=button.getAttribute('data-tx-msg');
     (messages[ref]=messages[ref]||[]).push(button);
     button.setAttribute('data-state','idle');
@@ -103,8 +104,11 @@
       if(button.getAttribute('data-state')==='shown')hide(button);
       else ask(button);
     });
-  });
-  if(panel&&buttons.length){
+  }
+  buttons.forEach(bindMessage);
+  var applyAuto=null;
+  function setupPanel(){
+    if(applyAuto||!panel||!document.querySelector('[data-tx-msg]'))return;
     panel.hidden=false;
     var chatObserver='IntersectionObserver' in window?new IntersectionObserver(function(entries){
       entries.forEach(function(entry){
@@ -114,8 +118,8 @@
         if(state==='idle'||state==='hidden')ask(entry.target);
       });
     },{rootMargin:'200px'}):null;
-    var applyAuto=function(){
-      buttons.forEach(function(button){
+    applyAuto=function(){
+      document.querySelectorAll('[data-tx-msg]').forEach(function(button){
         if(!auto.checked){if(button.getAttribute('data-state')==='shown')hide(button);return}
         if(chatObserver)chatObserver.observe(button);
         else ask(button);
@@ -125,6 +129,12 @@
     auto.addEventListener('change',function(){store(localStorage,'setItem',AUTO_KEY,auto.checked?'1':'0');applyAuto()});
     if(auto.checked)applyAuto();
   }
+  setupPanel();
+  document.addEventListener('bbs:messages-added',function(){
+    document.querySelectorAll('[data-tx-msg]').forEach(bindMessage);
+    setupPanel();
+    if(applyAuto&&auto.checked)applyAuto();
+  });
   // Signing out leaves nothing readable behind in this tab.
   document.addEventListener('submit',function(event){
     if((event.target.getAttribute('action')||'')!=='/logout/')return;

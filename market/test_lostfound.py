@@ -1,4 +1,5 @@
 """Lost-and-found and harassment controls tested through real server requests."""
+from market import inbox
 from datetime import timedelta
 
 from django.core.exceptions import PermissionDenied, ValidationError
@@ -88,10 +89,10 @@ class LostFoundFlow(TestCase):
         self.assertEqual({thread.first_id,thread.second_id}, {self.owner.pk,self.finder.pk})
         self.assertEqual(self.b.post(path).url, first.url)
         self.assertEqual(Thread.objects.filter(lostfound=self.post).count(), 1)
-        before = Notification.objects.filter(user=self.owner).count()
+        before = inbox.counts(self.owner)['total']
         self.assertEqual(self.b.post(first.url, {'text':'I found something like this.'}).status_code, 302)
         self.assertTrue(Message.objects.filter(thread=thread,text='I found something like this.').exists())
-        self.assertGreater(Notification.objects.filter(user=self.owner).count(), before)
+        self.assertGreater(inbox.counts(self.owner)['total'], before)
         self.assertEqual(self.c.get(first.url).status_code, 403)
         self.assertEqual(self.c.post(first.url, {'text':'Unauthorized'}).status_code, 403)
         self.assertFalse(Message.objects.filter(text='Unauthorized').exists())

@@ -12,6 +12,8 @@ class ResendBackend(BaseEmailBackend):
         sent=0
         for message in email_messages:
             body={'from':message.from_email,'to':message.to,'subject':message.subject,'text':message.body}
+            for content,mimetype in getattr(message,'alternatives',[]):
+                if mimetype=='text/html': body['html']=content
             req=Request('https://api.resend.com/emails',data=json.dumps(body).encode(),headers={'Authorization':'Bearer '+settings.RESEND_API_KEY,'Content-Type':'application/json','User-Agent':'box-box-share'},method='POST')
             try:
                 with urlopen(req,timeout=settings.EMAIL_TIMEOUT) as response: response.read()

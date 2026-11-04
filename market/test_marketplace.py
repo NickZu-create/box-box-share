@@ -309,10 +309,15 @@ class ContactUnlock(Base):
         self.assertContains(page, '+852 5555 1111'); self.assertContains(page, 'buyer_wechat')
         self.assertContains(self.s.get(self.url), 'buyer_wechat')
 
-    def test_count_is_per_conversation(self):
+    def test_count_is_per_pair_of_people(self):
         self.say(self.buyer, count=2); self.say(self.seller, count=2)
-        other = Thread.objects.create(item=make_item(self.seller), first=self.buyer, second=self.seller)
-        self.assertFalse(social.contacts_unlocked(other)[0])
+        # Two people have one conversation, whatever each thread underneath is about...
+        same_pair = Thread.objects.create(item=make_item(self.seller), first=self.buyer, second=self.seller)
+        self.assertTrue(social.contacts_unlocked(same_pair)[0])
+        # ...and nothing carries over to anyone else.
+        stranger = User.objects.create_user('stranger@my.cityu.edu.hk', 'stranger@my.cityu.edu.hk')
+        other_pair = Thread.objects.create(item=make_item(self.seller), first=stranger, second=self.seller)
+        self.assertFalse(social.contacts_unlocked(other_pair)[0])
 
     def test_never_shown_outside_the_conversation(self):
         self.say(self.buyer, count=2); self.say(self.seller, count=2)

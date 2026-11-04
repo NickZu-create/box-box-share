@@ -28,6 +28,7 @@ class Profile(models.Model):
     contact_phone = models.CharField(max_length=80,blank=True,default='')
     contact_wechat = models.CharField(max_length=80,blank=True,default='')
     contact_instagram = models.CharField(max_length=80,blank=True,default='')
+    request_emails = models.BooleanField('借用申請郵件提醒 / Borrow request emails',default=True,help_text='有人申請借用你的物品時發送郵件提醒 / Email me when someone asks to borrow my item')
     def __str__(self): return self.nickname
 class LoginToken(models.Model):
     email = models.EmailField()
@@ -36,6 +37,9 @@ class LoginToken(models.Model):
     used = models.BooleanField(default=False)
     # Where to return after sign-in, e.g. the item the visitor wanted to buy.
     next_url = models.CharField(max_length=300,blank=True,default='')
+    # The same sign-in as a short code, for mail apps whose built-in browser does not keep the session.
+    code_digest = models.CharField(max_length=64,blank=True,default='')
+    code_attempts = models.PositiveSmallIntegerField(default=0)
 class RateBucket(models.Model):
     key = models.CharField(max_length=100,unique=True)
     count = models.PositiveIntegerField(default=0)
@@ -228,11 +232,31 @@ class Thread(models.Model):
     wanted = models.ForeignKey(Wanted,on_delete=models.CASCADE,null=True,blank=True,related_name='threads')
     first = models.ForeignKey(User,on_delete=models.CASCADE,related_name='threads_first')
     second = models.ForeignKey(User,on_delete=models.CASCADE,related_name='threads_second')
-class Message(models.Model):
+class ChatLine:
+    # Shared by private and group messages.
+    RECALL_SECONDS = 120
+    @property
+    def recall_deadline(self): return int(self.created.timestamp())+self.RECALL_SECONDS
+    @property
+    def recall_open(self): return not self.recalled and timezone.now().timestamp()<self.recall_deadline
+class Message(ChatLine,models.Model):
     thread = models.ForeignKey(Thread,on_delete=models.CASCADE,related_name='messages')
     sender = models.ForeignKey(User,on_delete=models.CASCADE)
-    text = models.TextField(max_length=2000)
+    text = models.TextField(max_length=2000,blank=True)
+    image = models.ImageField(upload_to='chat/',blank=True)
+    reply_to = models.ForeignKey('self',on_delete=models.SET_NULL,null=True,blank=True,related_name='+')
+    forwarded = models.BooleanField(default=False)
+    # A recalled message stays in the database for harassment reports; nobody in the chat can read it.
+    recalled = models.BooleanField(default=False)
+    recalled_at = models.DateTimeField(null=True,blank=True)
     created = models.DateTimeField(auto_now_add=True)
+class ThreadRead(models.Model):
+    # How far one person has read one conversation. Nothing unread means this reaches the latest message.
+    thread = models.ForeignKey(Thread,on_delete=models.CASCADE,related_name='read_markers')
+    user = models.ForeignKey(User,on_delete=models.CASCADE,related_name='+')
+    last_read = models.PositiveBigIntegerField(default=0)
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['thread','user'],name='one_read_marker_each')]
 class BuddyGroup(models.Model):
     post = models.OneToOneField(BuddyPost,on_delete=models.CASCADE,related_name='group_chat')
     created = models.DateTimeField(auto_now_add=True)
@@ -244,13 +268,20 @@ class BuddyGroupMember(models.Model):
     left_at = models.DateTimeField(null=True,blank=True)
     # Snapshot under the post lock; repeat join cannot move this boundary backwards.
     history_after = models.PositiveBigIntegerField(default=0)
+    last_read = models.PositiveBigIntegerField(default=0)
     class Meta:
         constraints = [models.UniqueConstraint(fields=['group','user'],name='one_buddy_group_member_each')]
 
-class BuddyGroupMessage(models.Model):
+class BuddyGroupMessage(ChatLine,models.Model):
     group = models.ForeignKey(BuddyGroup,on_delete=models.CASCADE,related_name='messages')
     sender = models.ForeignKey(User,on_delete=models.PROTECT)
-    text = models.TextField(max_length=2000)
+    text = models.TextField(max_length=2000,blank=True)
+    image = models.ImageField(upload_to='chat/',blank=True)
+    reply_to = models.ForeignKey('self',on_delete=models.SET_NULL,null=True,blank=True,related_name='+')
+    forwarded = models.BooleanField(default=False)
+    # A recalled message stays in the database for harassment reports; nobody in the chat can read it.
+    recalled = models.BooleanField(default=False)
+    recalled_at = models.DateTimeField(null=True,blank=True)
     created = models.DateTimeField(auto_now_add=True)
 class Friendship(models.Model):
     # One row per pair of people. Friends only after the recipient accepts; nobody is added automatically.
@@ -262,11 +293,17 @@ class Friendship(models.Model):
     class Meta:
         constraints = [models.UniqueConstraint(fields=['sender','recipient'],name='one_friend_request_each'),models.CheckConstraint(condition=~Q(sender=F('recipient')),name='no_self_friendship')]
 class Notification(models.Model):
+    KINDS = [('system','系統更新 / System'),('item','物品通知 / Items'),('friend','好友 / Friends'),('request','借用申請 / Borrowing')]
+    kind = models.CharField(max_length=10,choices=KINDS,default='system')
     user = models.ForeignKey(User,on_delete=models.CASCADE)
     text = models.CharField(max_length=240)
     url = models.CharField(max_length=200)
+    # User-written context shown after the label, e.g. who asked to borrow what.
+    detail = models.CharField(max_length=200,blank=True,default='')
     read = models.BooleanField(default=False)
     created = models.DateTimeField(auto_now_add=True)
+    class Meta:
+        indexes = [models.Index(fields=['user','read'],name='market_note_user_read')]
 class Review(models.Model):
     order = models.ForeignKey(Order,on_delete=models.PROTECT,related_name='reviews')
     author = models.ForeignKey(User,on_delete=models.PROTECT,related_name='reviews_written')

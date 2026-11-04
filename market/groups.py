@@ -8,7 +8,7 @@ from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
 from django.db.models import Q, Max
 from django.utils import timezone
-from .models import BuddyPost, BuddyGroup, BuddyGroupMember, BuddyGroupMessage, BuddyApplication, UserBlock, Notification
+from .models import BuddyPost, BuddyGroup, BuddyGroupMember, BuddyGroupMessage, BuddyApplication, UserBlock
 from .social import lock_post, is_blocked
 from .services import throttle, notify
 
@@ -85,7 +85,6 @@ def leave(group_id,user):
     if group.post.owner_id==user.pk: raise ValidationError('發起人保留群聊管理權 / The host retains group management')
     membership(group,user)
     group.memberships.filter(user=user,left_at__isnull=True).update(left_at=timezone.now())
-    Notification.objects.filter(user=user,url=f'/messages/groups/{group.pk}/').update(read=True)
 
 
 def revoke_for_post(post,user):
@@ -94,15 +93,10 @@ def revoke_for_post(post,user):
 
 
 @transaction.atomic
-def send(group_id,user,text):
+def send(group_id,user,text,image=None,reply_to=None,forwarded=False):
     group=locked_group(group_id)
     membership(group,user)
-    text=text.strip()
-    if not text or len(text)>2000: raise ValidationError('1–2000 characters / 請輸入 1–2000 字')
+    text=(text or '').strip()
+    if len(text)>2000 or (not text and not image): raise ValidationError('1–2000 characters / 請輸入 1–2000 字')
     throttle('message:'+str(user.pk),30,60)
-    message=BuddyGroupMessage.objects.create(group=group,sender=user,text=text)
-    url=f'/messages/groups/{group.pk}/'
-    for row in group.memberships.filter(left_at__isnull=True).exclude(user=user).select_related('user__profile'):
-        if eligible(group,row.user) and not is_blocked(user,row.user) and not Notification.objects.filter(user=row.user,url=url,read=False).exists():
-            notify(row.user,'Buddy 群聊有新訊息 / New Buddy group message',url)
-    return message
+    return BuddyGroupMessage.objects.create(group=group,sender=user,text=text,image=image or '',reply_to=reply_to,forwarded=forwarded)

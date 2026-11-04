@@ -27,7 +27,7 @@ class LegacyMemberPages(TestCase):
         Offer.objects.create(wanted=self.wanted, item=self.item, text='Original offer')
         self.thread = Thread.objects.get(order=self.order)
         Message.objects.create(thread=self.thread, sender=self.owner, text='Original private message')
-        Notification.objects.create(user=self.borrower, text='Original notification', url=f'/orders/{self.order.pk}/')
+        Notification.objects.create(user=self.borrower, text='Original notification', url=f'/orders/{self.order.pk}/', kind='request')
         self.client.force_login(self.borrower)
 
     def test_existing_dashboard_records_and_edit_links_survive(self):
@@ -47,8 +47,11 @@ class LegacyMemberPages(TestCase):
     def test_original_conversations_notifications_and_order_links_survive(self):
         self.client.post('/language/', {'lang': 'en'})
         inbox = self.client.get('/messages/')
-        for text in ('Conversations', 'Notifications', 'Mark all read', 'Original notification'):
+        for text in ('Conversations', 'Borrow', 'Notifications', 'Original notification'):
             self.assertContains(inbox, text)
+        notes = self.client.get('/notifications/')
+        for text in ('Mark all read', 'Original notification'):
+            self.assertContains(notes, text)
         self.assertContains(inbox, f'href="/messages/{self.thread.pk}/"')
         chat = self.client.get(f'/messages/{self.thread.pk}/')
         self.assertContains(chat, 'Original private message')

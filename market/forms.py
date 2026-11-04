@@ -113,7 +113,7 @@ class ProfileForm(Localized,forms.ModelForm):
     remove_avatar=forms.BooleanField(required=False,label='移除目前頭像 / Remove current avatar')
     class Meta:
         model=Profile
-        fields=['nickname','avatar','bio','interests','skills','languages','university','major','academic_year','faculty','contact_whatsapp','contact_phone','contact_wechat','contact_instagram']
+        fields=['nickname','avatar','bio','interests','skills','languages','university','major','academic_year','faculty','contact_whatsapp','contact_phone','contact_wechat','contact_instagram','request_emails']
         labels={**LABELS,'university':'大學（選填） / University (optional)','major':'主修或課程（選填） / Major or Programme (optional)','academic_year':'年級（選填） / Academic year (optional)','faculty':'學院（選填） / Faculty or College (optional)','contact_whatsapp':'WhatsApp（選填） / WhatsApp (optional)','contact_phone':'電話（選填） / Phone (optional)','contact_wechat':'WeChat（選填） / WeChat (optional)','contact_instagram':'Instagram（選填） / Instagram (optional)'}
         # A plain file input. Django's default widget links to the current file's public URL, but photos are
         # private: DatabaseStorage (MEDIA_STORAGE=db, used on Render) has no public URL and raised, so

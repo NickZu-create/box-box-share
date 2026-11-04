@@ -1,7 +1,7 @@
 /* Progressive enhancements shared by every page. Links and forms all work without this file. */
 (() => {
   'use strict';
-  const menus = '.lang-menu[open],.more-menu[open],.more-nav[open]';
+  const menus = '.lang-menu[open],.more-menu[open],.more-nav[open],.bubble-more[open]';
   document.addEventListener('click', event => {
     document.querySelectorAll(menus).forEach(menu => { if (!menu.contains(event.target)) menu.open = false; });
     const share = event.target.closest('[data-share-item]');
@@ -74,6 +74,14 @@
     const status = document.querySelector('.order-filter-status');
     if (status) status.hidden = count > 0;
   }
+
+  // Sign-in code: six digits are enough, so there is nothing else to press.
+  document.querySelector('[data-login-code] input[name=code]')?.addEventListener('input', event => {
+    const digits = event.target.value.replace(/\D/g, '').slice(0, 6);
+    event.target.value = digits;
+    const form = event.target.form;
+    if (digits.length === 6 && !form.dataset.sent) { form.dataset.sent = '1'; form.submit(); }
+  });
 
   // Publishing: the same form covers lending and selling, or borrowing and buying.
   const form = document.querySelector('[data-market-publish]');
