@@ -1,5 +1,5 @@
 /* Payment page and lender payment codes. Brand colours are kept as tokens so official values can be swapped in. */
-:root{--pay-wechat:#07c160;--pay-wechat-dark:#06a552;--pay-alipay:#1677ff;--pay-alipay-dark:#0f5fd6;--pay-fps:#1d3f72;--pay-fps-dark:#142e55}
+:root{--pay-wechat:#07c160;--pay-wechat-dark:#06a552;--pay-alipay:#1677ff;--pay-alipay-dark:#0f5fd6;--pay-fps:#1b5a9e;--pay-fps-dark:#144677;--pay-alipay-hk:#0098e8;--pay-alipay-hk-text:#006fa8}
 .pay-page h1{margin-bottom:6px}
 .pay-summary{display:grid;gap:4px}
 .pay-summary>small{color:var(--muted);font-size:12px}
@@ -31,6 +31,7 @@
 .pay-wechat{background:var(--pay-wechat)}
 .pay-alipay{background:var(--pay-alipay)}
 .pay-fps{background:var(--pay-fps)}
+.pay-fps img{width:28px;height:28px;background:#fff;border-radius:6px} /* The logo's blues need their white ground. */
 .pay-button:active{transform:scale(.97)}
 .pay-wechat:active{background:var(--pay-wechat-dark)}
 .pay-alipay:active{background:var(--pay-alipay-dark)}
@@ -43,7 +44,7 @@
 .pay-suboption{display:flex;align-items:center;gap:10px;min-height:46px;padding:9px 12px;border-radius:8px;font-size:14px;font-weight:600;transition:background-color .12s}
 .pay-suboption img{width:24px;height:24px;flex:none;transition:filter .12s}
 .pay-sub-cn{color:#0f5fd6;border-left:3px solid var(--pay-alipay)}
-.pay-sub-hk{color:#0b3f8f;border-left:3px solid #0b3f8f}
+.pay-sub-hk{color:var(--pay-alipay-hk-text);border-left:3px solid var(--pay-alipay-hk)}
 .pay-suboption:active{background:#dfeaff}
 .pay-empty{font-size:17px;font-weight:700;margin:0 0 6px}
 

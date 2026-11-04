@@ -35,10 +35,10 @@ Files are in `market/static/market/pay/`; replacing a file needs no code change.
 | File | Status |
 |---|---|
 | `wechat.svg`, `alipay.svg`, `alipay-cn.svg` | From [simple-icons](https://simpleicons.org) 13.21.0 (CC0 for the files; the marks remain trademarks of their owners) |
-| `alipay-hk.svg`, `fps.svg` | **Temporary neutral placeholders, not official logos.** Replace with official artwork |
+| `alipay-hk.png`, `fps.png` | Provided by the project team, resized for the buttons. Source files were small JPEGs; replace with vector or larger artwork if available |
 
 Button colours are CSS variables at the top of `market/static/market/payment.css`.
-`--pay-fps` is provisional until the official FPS artwork is available. Check each brand's
+`--pay-fps` and `--pay-alipay-hk` are sampled from the supplied artwork. Check each brand's
 logo rules before public launch.
 
 ## Limits
