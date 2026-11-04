@@ -1,5 +1,6 @@
 """Direct borrower-to-lender payment by the lender's QR codes, plus a reference HKD converter."""
-import json, time
+import json, math, time
+from decimal import Decimal, InvalidOperation
 from urllib.request import Request, urlopen
 from django.conf import settings
 from django.core.cache import cache
@@ -22,6 +23,11 @@ def available_codes(owner):
 def currencies_for(channels):
     wanted={currency for channel in channels for currency in CHANNEL_CURRENCIES[channel]}
     return [currency for currency in CURRENCY_ORDER if currency in wanted]
+
+def confirmation_context(order):
+    """Existing flags record confirmations, never a verified outstanding balance."""
+    rows=[{'key':key,'amount':getattr(order,key),'owner':getattr(order,key+'_owner'),'borrower':getattr(order,key+'_borrower')} for key in ('rent','deposit')]
+    return {'payment_confirmations':rows,'both_payment_confirmations':all(row['amount']==0 or (row['owner'] and row['borrower']) for row in rows)}
 
 def can_view(code,user):
     if user.is_staff or user.pk==code.owner_id: return True
@@ -49,17 +55,23 @@ def remove_code(owner,channel):
 def fetch_rates():
     req=Request(settings.FX_URL,headers={'User-Agent':'box-box-share'})
     with urlopen(req,timeout=settings.FX_TIMEOUT) as response: body=json.load(response)
-    if body['result']!='success': raise ValueError('rates unavailable')
-    rates={currency:str(body['rates'][currency]) for currency in CURRENCY_ORDER}
-    return {'rates':rates,'updated':body['time_last_update_unix']},body['time_next_update_unix']
+    if body['result']!='success' or body['base_code']!='HKD': raise ValueError('HKD rates unavailable')
+    rates={currency:Decimal(str(body['rates'][currency])) for currency in CURRENCY_ORDER}
+    if any(not rate.is_finite() or rate<=0 or not math.isfinite(float(rate)) or float(rate)==0 for rate in rates.values()) or rates['HKD']!=1:
+        raise ValueError('invalid rates')
+    updated=int(body['time_last_update_unix']); next_update=int(body['time_next_update_unix'])
+    if updated<=0 or updated>time.time()+300 or next_update<=updated: raise ValueError('invalid rate timestamps')
+    return {'rates':{currency:str(rate) for currency,rate in rates.items()},'updated':updated},next_update
 
 def hkd_rates():
     """Rates per 1 HKD, or None. Cached until the provider's next update; failures are retried after 5 minutes."""
     cached=cache.get(RATES_KEY)
     if cached is not None: return cached or None
-    try: data,next_update=fetch_rates()
-    except (OSError,ValueError,KeyError,TypeError):
+    try:
+        data,next_update=fetch_rates()
+        seconds=max(60,min(int(next_update-time.time()),MAX_RATES_SECONDS))
+    except (OSError,ValueError,KeyError,TypeError,InvalidOperation,OverflowError):
         cache.set(RATES_KEY,False,FAILURE_SECONDS)
         return None
-    cache.set(RATES_KEY,data,max(60,min(int(next_update-time.time()),MAX_RATES_SECONDS)))
+    cache.set(RATES_KEY,data,seconds)
     return data

@@ -9,11 +9,18 @@
 <div class="panel"><p>{% tr '此訂單無需付款。' 'No payment is needed for this order.' %}</p><a class="text-link" href="/orders/{{ order.pk }}/">{% tr '返回訂單' 'Back to order' %} →</a></div>
 {% else %}
 <div class="panel pay-summary">
-  <small>{% tr '應付總額' 'Total to pay' %}</small>
+  <small>{% tr '訂單費用總額' 'Order charges' %}</small>
   <strong class="pay-total">HK$ {{ order.total }}</strong>
   <dl class="pay-breakdown"><dt>{% tr '租金' 'Rent' %}</dt><dd>HK$ {{ order.rent }}</dd><dt>{% tr '押金' 'Deposit' %}</dt><dd>HK$ {{ order.deposit }}</dd></dl>
+  <p class="hint pay-balance-note">{% tr '以上是完整訂單費用。平台不記錄實際已付金額，也不計算剩餘應付金額。付款前請先與物主核對，包括延期產生的額外租金，避免重複付款。' 'These are the full order charges. The platform does not record amounts paid or calculate the remaining balance. Check any amount still due with the lender, including extra rent from extensions, before paying again.' %}</p>
+  <div class="pay-confirmations" aria-label="{% tr '現有付款確認' 'Existing payment confirmations' %}">
+    <h2>{% tr '現有付款確認' 'Existing payment confirmations' %}</h2>
+    {% for row in payment_confirmations %}<div class="pay-confirmation-row" data-confirmation="{{ row.key }}"><strong>{% if row.key == 'rent' %}{% tr '租金' 'Rent' %}{% else %}{% tr '押金' 'Deposit' %}{% endif %}</strong><span>{% if row.amount == 0 %}{% tr '此項無費用' 'No charge' %}{% elif row.owner and row.borrower %}{% tr '雙方已確認（自行申報）' 'Both confirmed (self-reported)' %}{% elif row.owner %}{% tr '物主已確認，借用人尚未確認' 'Lender confirmed; borrower has not confirmed' %}{% elif row.borrower %}{% tr '借用人已確認，物主尚未確認' 'Borrower confirmed; lender has not confirmed' %}{% else %}{% tr '尚未確認' 'Not yet confirmed' %}{% endif %}</span></div>{% endfor %}
+    {% if both_payment_confirmations %}<p class="notice pay-confirmed-note" data-pay-confirmed>{% tr '已有雙方付款確認紀錄。請先核對再付款，切勿重複支付。這些紀錄不代表銀行已核實付款，也沒有記錄確認時的金額。' 'Both parties have recorded payment confirmations. Check before paying and avoid duplicate payments. These records do not verify bank payments or record the amounts at confirmation.' %}</p>{% endif %}
+    <a class="text-link" href="/orders/{{ order.pk }}/#payment-records">{% tr '查看或更新訂單確認' 'View or update order confirmations' %} →</a>
+  </div>
   {% if currencies %}<div class="pay-converter is-loading" data-pay-converter data-amount="{{ amount }}" data-rates-url="/fx/hkd/" data-failed="{% tr '匯率獲取失敗，請以港幣金額為準' 'Could not get the exchange rate. Please go by the HKD amount.' %}" data-updated="{% tr '更新於' 'Updated' %}" hidden>
-    <label for="pay-currency">{% tr '換算幣種' 'Convert to' %}</label>
+    <label for="pay-currency">{% tr '訂單費用換算（僅供參考）' 'Convert order charges (reference only)' %}</label>
     <select id="pay-currency" disabled>{% for currency in currencies %}<option value="{{ currency }}">{% if currency == 'HKD' %}{% tr '港幣 HKD' 'HKD · Hong Kong dollar' %}{% else %}{% tr '人民幣 CNY' 'CNY · Chinese yuan' %}{% endif %}</option>{% endfor %}</select>
     <div class="pay-converted"><span class="pay-spinner" aria-hidden="true"></span><output for="pay-currency" aria-live="polite" data-pay-converted>—</output></div>
     <p class="pay-rate" data-pay-rate role="status"></p>
@@ -43,10 +50,11 @@
   <div class="pay-dialog-body">
     <button type="button" class="pay-dialog-close" data-pay-close aria-label="{% tr '關閉' 'Close' %}">×</button>
     <h2 id="pay-dialog-title" data-pay-title></h2>
-    <p class="pay-dialog-amount">HK$ {{ order.total }}</p>
+    <p class="pay-dialog-amount">{% tr '訂單費用總額' 'Order charges' %} · HK$ {{ order.total }}</p>
+    <p class="hint pay-check">{% tr '請先核對現有付款紀錄與實際待付金額，避免重複付款。' 'Check existing confirmations and agree the amount still due before paying again.' %}</p>
     <div class="pay-qr-frame is-loading" data-pay-frame><span class="pay-spinner" aria-hidden="true"></span><img data-pay-image alt="{% tr '收款二維碼' 'Payment QR code' %}" hidden></div>
     <p class="notice danger-notice" data-pay-error role="alert" hidden>{% tr '二維碼載入失敗，請關閉後再試。' 'Could not load the QR code. Close this and try again.' %}</p>
-    <p class="hint">{% tr '長按二維碼識別並跳轉付款。如未能跳轉，請保存圖片，再到相應 App 從相冊掃碼。' 'Press and hold the QR code to open the payment page. If that does not work, save the image and scan it from your photos in the app.' %}</p>
+    <p class="hint">{% tr '如目前的 App 支援，可長按二維碼識別；否則請保存圖片，再到相應 App 從相冊掃碼。' 'If your current app supports it, press and hold to recognise the QR code. Otherwise, save the image and scan it from your photos in the payment app.' %}</p>
     <a class="text-link" data-pay-save download="box-box-share-payment-qr.jpg" href="#">{% tr '保存二維碼' 'Save QR code' %} ↓</a>
     <p class="hint pay-check">{% tr '付款前請核對收款人是否正確。' 'Check the recipient before you pay.' %}</p>
   </div>

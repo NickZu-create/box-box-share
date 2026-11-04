@@ -5,7 +5,7 @@
 <a class="breadcrumb" href="/profile/">← {% tr '個人資料' 'Your profile' %}</a>
 <h1>{% tr '收款碼' 'Payment codes' %}</h1>
 <p class="hint">{% tr '上傳你接受的支付渠道的收款二維碼。訂單接受後，借用人只會看到你已上傳的渠道，並直接付款給你。平台不收款、不託管。' 'Upload a QR code for each channel you accept. After you accept an order, the borrower sees only those channels and pays you directly. The platform does not collect or hold money.' %}</p>
-<p class="hint">{% tr '只有與你有付款中訂單的借用人和管理員可以查看。圖片上限 5 MB；JPEG、PNG 或 WebP。上傳後請自行確認二維碼仍能掃描。' 'Only borrowers with an order awaiting payment, and administrators, can see them. JPEG, PNG or WebP, up to 5 MB. After uploading, check that the code still scans.' %}</p>
+<p class="hint">{% tr '只有與你有已接受、借用中或歸還待確認訂單的借用人，以及管理員可以查看。圖片上限 5 MB；JPEG、PNG 或 WebP。上傳後請自行確認二維碼仍能掃描。' 'Only borrowers with an accepted, on-loan or return-pending order from you, and administrators, can see them. JPEG, PNG or WebP, up to 5 MB. After uploading, check that the code still scans.' %}</p>
 <div class="pay-code-list">{% for row in rows %}<div class="panel pay-code-card">
   <h2>{{ row.label|loc }}</h2>
   {% if row.code %}<a href="/media/payment/{{ row.code.pk }}/"><img class="pay-code-preview" src="/media/payment/{{ row.code.pk }}/" alt="{% tr '目前的收款碼' 'Current payment code' %}"></a><p class="hint">{% tr '更新於' 'Updated' %} {{ row.code.updated|date:'Y-m-d H:i' }}</p>{% else %}<p class="hint">{% tr '未開通' 'Not set up' %}</p>{% endif %}

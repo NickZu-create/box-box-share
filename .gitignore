@@ -22,6 +22,7 @@ output/*
 !output/student_preview.py
 !output/group_preview.py
 !output/experience_preview.py
+!output/payment_preview.py
 !output/test_demo_core.cjs
 !output/design-preview/
 !output/showcase-baseline/
@@ -32,7 +33,9 @@ output/*
 !output/market-review/
 !output/student-review/
 !output/group-review/
+!output/payment-review/
 output/design-preview/__qa/
 output/*-review/*
 !output/*-review/*.md
 !output/experience-review/*.jpg
+!output/payment-review/*.jpg

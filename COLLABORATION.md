@@ -1,16 +1,18 @@
 # Box Box Share 协作开发
 
-本次完整代码快照在 `codex/collaboration-2026-11-04` 分支。该分支包含现有 Django 项目、最新版独立演示、生成脚本及本地检查记录。上传 GitHub 不代表部署；不要把这个分支合并到生产分支或连接自动部署，除非另行安排发布。
+本次完整代码快照在 `codex/payment-integration-2026-11-04` 分支。该分支包含现有 Django 项目、最新版独立演示、生成脚本及本地检查记录。上传 GitHub 不代表部署；不要把这个分支合并到生产分支或连接自动部署，除非另行安排发布。
 
 ## 先看最新界面（无需安装项目依赖）
 
 安装 Python 3.12，然后：
 
 ```sh
-git clone --branch codex/collaboration-2026-11-04 https://github.com/NickZu-create/box-box-share.git
+git clone --branch codex/payment-integration-2026-11-04 https://github.com/NickZu-create/box-box-share.git
 cd box-box-share
 python -m http.server 8012 --bind 127.0.0.1 --directory output/design-preview
 ```
+
+Windows 下也可双击根目录的 `start-preview.cmd`，它会在后台启动并打开预览。关闭终端不会停止该后台服务；电脑重启后需再次运行。也可运行 `python tools/preview_server.py`，仅启动而不打开浏览器。地址只在运行服务的本机可用，朋友需各自在自己的电脑启动。
 
 macOS/Linux 的 Python 命令可能是 `python3`。打开：
 
@@ -45,7 +47,7 @@ python3 -m venv .venv
 .venv/bin/python manage.py runserver 127.0.0.1:8000
 ```
 
-真实功能在 http://127.0.0.1:8000/ ，新克隆默认是空数据库。迁移包含 0006 失物招领与拉黑、0007 可选学生资料与推荐、0008 Buddy 群聊。不要复制别人的 `data.sqlite3`、`private-media/` 或登录邮件来初始化账号。开发文件邮件里的链接可以登录对应账号，不能提交或转发。
+真实功能在 http://127.0.0.1:8000/ ，新克隆默认是空数据库。迁移包含 0006 失物招领与拉黑、0007 可选学生资料与推荐、0008 Buddy 群聊和 0009 物主收款码。不要复制别人的 `data.sqlite3`、`private-media/` 或登录邮件来初始化账号。开发文件邮件里的链接可以登录对应账号，不能提交或转发。
 
 ## 修改预览与重新生成
 
@@ -65,7 +67,7 @@ macOS/Linux 使用 `.venv/bin/python`。构建更新 HTML 与资源版本号；�
 | --- | --- | --- |
 | 原有租借、申请审批、消息与好友 | 真实服务端流程 | 合成流程 |
 | 失物招领、举报与拉黑 | 已实现 | 合成流程 |
-| 付款页：物主收款码、微信/Alipay/FPS 按钮、HKD 换算（[PAYMENT.md](PAYMENT.md)） | 已实现，未做真机付款测试 | 未加入 |
+| 付款页：物主收款码、微信/Alipay/FPS 按钮、HKD 换算（[PAYMENT.md](PAYMENT.md)） | 已实现，未做真机付款测试 | 示例订单入口、占位图和固定示例汇率 |
 | 可选学生资料、专业/课程搜索、权重推荐 | 已实现 | 合成流程 |
 | Buddy 群聊、接受后自愿入群、入群后历史边界 | 已实现 | 合成流程 |
 | 出售/求购、直接购买、四条消息解锁联系方式 | 尚未实现对应交易/联系方式模型 | 已演示 |
@@ -93,7 +95,7 @@ SQLITE_TEST_PATH=collaboration-test.sqlite3 .venv/bin/python manage.py test mark
 node output/test_demo_core.cjs
 ```
 
-Node.js 仅用于演示规则测试，运行网站和构建预览无需 Node。此次快照已通过 114 项 Django 测试与 14 项演示规则测试；[最新检查与截图](output/experience-review/design-qa.md)。较早检查记录的测试数和截图反映当时版本。
+Node.js 仅用于演示规则测试，运行网站和构建预览无需 Node。此次快照已通过 143 项 Django 测试与 14 项演示规则测试；[最新检查与截图](output/payment-review/design-qa.md)。较早检查记录的测试数和截图反映当时版本。
 
 每人从快照新建自己的分支，例如 `git switch -c feature/profile-edit`，通过 Pull Request 合并。当前仓库公开，朋友可直接克隆或 Fork；直接推送到本仓库需要仓库拥有者在 GitHub 添加其协作者账号。这次上传没有修改权限或邀请任何人。
 
