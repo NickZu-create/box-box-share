@@ -19,6 +19,7 @@
         const el = document.getElementById('id_' + key);
         if (el && value !== '') el.value = value;
       }
+      document.querySelector('.publish-options')?.setAttribute('open', '');
       const main = document.getElementById('id_photo');
       if (main && !main.files.length) main.files = file.files;
       status.textContent = panel.dataset.done;

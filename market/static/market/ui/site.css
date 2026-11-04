@@ -1,0 +1,52 @@
+/* Server-rendered counterparts of the design's script-built controls, and notices shared by every page. */
+.market-filter-tabs a{font:inherit;font-size:12px;color:#705d65;border:1px solid #ead7df;border-radius:22px;background:#fffdfb;min-height:34px;padding:6px 14px;display:inline-flex;align-items:center}
+.market-filter-tabs a[aria-current=true]{background:#96202e;border-color:#96202e;color:#fff}
+.applied-filters a{display:inline-flex;align-items:center;gap:9px;border:1px solid #e6c7d1;color:#872b43;background:#fffafc;border-radius:24px;padding:7px 12px;min-height:36px;font-size:13px}
+.applied-filters a:hover{background:#f6e4eb}
+.filter-reset{display:inline-flex;align-items:center;gap:6px}
+.flashes{max-width:1216px;margin:12px auto;padding:0 16px}
+.flash{margin:0 0 8px;padding:12px 16px;border-radius:9px;background:#f6e8ea;color:#5d2733;font-size:14px}
+.flash.error{background:#fae5df;color:#8a3c30}
+.session-control{max-width:1216px;margin:0 auto;padding:0 32px 16px}
+.session-control .text-button{background:none;border:0;padding:0;color:#75666c;font:inherit;font-size:12px;cursor:pointer}
+.header-actions .signin{font-size:13px}
+.preview-app .panel{background:#fffdfb;border:1px solid var(--bb-line);border-radius:var(--bb-radius);padding:22px;margin-bottom:16px}
+.preview-app .list-row{display:flex;justify-content:space-between;align-items:center;gap:14px;padding:13px 0;border-bottom:1px solid var(--bb-line)}
+.preview-app .list-row:last-child{border-bottom:0}
+.preview-app .list-row h3{margin:0;font-size:14px}
+.preview-app .list-row p{margin:3px 0 0;font-size:12px;color:var(--bb-muted)}
+.preview-app .row-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.preview-app .button.compact{min-height:36px;padding:6px 12px;font-size:13px}
+.preview-app .text-button{background:none;border:0;padding:0;font:inherit;font-size:13px;color:var(--bb-muted);cursor:pointer}
+.preview-app .notification.unread{border-left:3px solid var(--bb-wine);padding-left:12px}
+.preview-app .inbox-management-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin-top:14px}
+.preview-app .chat-composer textarea{resize:vertical}
+
+.budget-amount strong{white-space:nowrap}
+
+/* Publishing */
+.market-form .field-error{margin:0;color:#8a3c30;font-size:12px;list-style:none;padding:0}
+.market-form .errorlist{margin:0;padding:0;list-style:none;color:#8a3c30;font-size:12px}
+.market-form .publish-options-grid label.is-wide{grid-column:1/-1}
+.market-form .publish-photos{display:flex;gap:10px;flex-wrap:wrap}
+.market-form .publish-photos label{display:grid;gap:4px;font-size:12px;width:92px}
+.market-form .publish-photos img{width:92px;height:92px;object-fit:cover;border-radius:8px}
+
+/* Item decisions */
+.detail-preview .page{position:relative}
+.decision-actions{display:flex;flex-wrap:wrap;gap:10px;margin:14px 0}
+.decision-actions form{margin:0}
+.buy-summary{display:grid;gap:6px}
+.buy-price{font-size:30px;font-weight:700;color:#96202e;margin:0}
+
+/* Contact gate inside a conversation */
+.contact-gate .contact-state{margin:0;font-size:12px;color:var(--bb-muted,#75666c)}
+
+/* Student and contact fields on the profile */
+.profile-contacts-note{font-size:12px;color:#75666c}
+
+@media(max-width:760px){
+  .preview-app .inbox-management-grid{grid-template-columns:minmax(0,1fr)}
+  .session-control{padding:0 16px 88px}
+  .flashes{padding:0 16px}
+}

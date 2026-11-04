@@ -8,7 +8,7 @@ from django.contrib.auth import login, logout
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError, PermissionDenied
 from django.db import transaction
-from django.db.models import Q, Avg, Count, F, Value
+from django.db.models import Q, Avg, Count, F, OuterRef, Subquery, Value
 from django.db.models.functions import Coalesce
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.http import FileResponse, Http404, HttpResponse, JsonResponse
@@ -24,6 +24,12 @@ from .services import *
 from .impact import impact_summary, METHOD_URL
 from . import ai, social, i18n, recommendations, university, groups, payments
 
+def message_rows(me):
+    # Conversation list for the Messages sidebar, most recently active first.
+    latest=Message.objects.filter(thread=OuterRef('pk')).order_by('-created','-pk')
+    threads=Thread.objects.filter(Q(first=me)|Q(second=me)).select_related('item','order__item','buddy','lostfound','wanted','first__profile','second__profile').annotate(last_text=Subquery(latest.values('text')[:1]),last_at=Subquery(latest.values('created')[:1])).order_by(F('last_at').desc(nulls_last=True),'-pk')
+    return [{'thread':t,'other':t.second if t.first_id==me.pk else t.first,'preview':t.last_text,'stamp':t.last_at} for t in threads]
+
 def error(request,exc): messages.error(request,'; '.join(str(m) for m in exc.messages))
 def safe_next(request,fallback='/'):
     target=request.POST.get('next') or request.GET.get('next') or ''
@@ -34,6 +40,9 @@ def home(request):
     rows=Wanted.objects.filter(active=True,owner__profile__restricted=False) if wanted else Item.objects.filter(status='listed',owner__profile__restricted=False)
     if q: rows=rows.filter(Q(title__icontains=q)|Q(description__icontains=q))
     if category: rows=rows.filter(category=category)
+    intent=request.GET.get('intent','')
+    if intent in (('borrow','buy') if wanted else ('rent','sale')): rows=rows.filter(intent=intent)
+    else: intent=''
     maximum=request.GET.get('price','')
     if maximum:
         try:
@@ -51,22 +60,24 @@ def home(request):
                 rows=rows.filter(available_start__lte=start,available_end__gte=end,max_days__gte=interval(start,end)).exclude(pk__in=blocked)
         else: rows=rows.none(); messages.error(request,'請輸入有效日期 / Enter valid dates')
     rows=rows.order_by('-created','-pk')
-    return render(request,'market/home.html',{'rows':rows.select_related('owner__profile').prefetch_related('photos')[:100] if not wanted else rows.select_related('owner__profile')[:100],'wanted':wanted,'categories':CATEGORIES,'date_form':dates})
+    has_filters=any(request.GET.get(key) for key in ('q','category','price','start','end','intent'))
+    return render(request,'market/home.html',{'has_filters':has_filters,'rows':rows.select_related('owner__profile').prefetch_related('photos')[:100] if not wanted else rows.select_related('owner__profile')[:100],'wanted':wanted,'intent':intent,'categories':CATEGORIES,'date_form':dates})
 
 def signin(request):
     if request.method=='POST':
         try:
-            send_login(request.POST.get('email',''),client_ip(request),request.build_absolute_uri('/').rstrip('/'))
+            send_login(request.POST.get('email',''),client_ip(request),request.build_absolute_uri('/').rstrip('/'),safe_next(request,''))
             messages.success(request,'已建立登入郵件，請查收。 / Sign-in email created. Check your inbox.' if settings.MAIL_LIVE else '開發模式：登入郵件已寫入伺服器 dev-mail 目錄，未發送到學校郵箱。 / Development only: message saved to server dev-mail; not delivered.')
         except ValidationError as exc: error(request,exc)
-    return render(request,'market/login.html')
+    return render(request,'market/login.html',{'next':safe_next(request,'')})
 
 def verify(request,raw):
     if request.method=='POST':
         try:
             throttle('verify:'+client_ip(request),30,300)
+            target=LoginToken.objects.filter(digest=hashlib.sha256(raw.encode()).hexdigest()).values_list('next_url',flat=True).first()
             user=consume_token(raw); login(request,user,backend='django.contrib.auth.backends.ModelBackend')
-            return redirect('home')
+            return redirect(target or 'home')
         except ValidationError as exc: error(request,exc)
     return render(request,'market/verify.html')
 
@@ -85,15 +96,18 @@ def language(request):
 @member
 def item_edit(request,pk=None):
     item=get_object_or_404(Item,pk=pk,owner=request.user) if pk else None
-    form=ItemForm(request.POST or None,request.FILES or None,instance=item)
-    context={'form':form,'title':'發布／編輯借出物品 / List or edit an item','ai':ai.enabled() and not item,'ai_provider':settings.AI_PROVIDER_LABEL}
+    form=ItemForm(request.POST or None,request.FILES or None,instance=item,initial={'intent':'sale'} if not item and request.GET.get('intent')=='sale' else None)
+    context={'form':form,'kind':'item','item':item,'title':'發布／編輯物品 / List or edit an item','ai':ai.enabled() and not item,'ai_provider':settings.AI_PROVIDER_LABEL}
+    if item and item.status=='sold':
+        messages.error(request,'已售出的物品不能編輯 / A sold item cannot be edited')
+        return redirect('item',pk=item.pk)
     if request.method=='POST' and form.is_valid():
         with transaction.atomic():
             if item:
                 Item.objects.select_for_update().get(pk=item.pk)
                 if Order.objects.filter(item=item,status__in=Order.LOCKED).filter(Q(start__lt=form.cleaned_data['available_start'])|Q(end__gt=form.cleaned_data['available_end'])).exists():
                     form.add_error(None,'保留已接受預約的可借日期 / Keep availability for accepted bookings')
-                    return render(request,'market/form.html',context)
+                    return render(request,'market/publish.html',context)
             obj=form.save(commit=False); obj.owner=request.user; obj.save()
             for photo in form.cleaned_data.get('remove_photos',[]):
                 storage,name=photo.image.storage,photo.image.name
@@ -101,7 +115,7 @@ def item_edit(request,pk=None):
                 transaction.on_commit(lambda storage=storage,name=name: storage.delete(name))
             if form.cleaned_data['photo']: ItemPhoto.objects.create(item=obj,image=form.cleaned_data['photo'])
         return redirect('item',pk=obj.pk)
-    return render(request,'market/form.html',context)
+    return render(request,'market/publish.html',context)
 
 @member
 @require_POST
@@ -121,8 +135,9 @@ def item_detail(request,pk):
     quote=None
     quote_token=None
     if request.method=='POST':
-        if not request.user.is_authenticated: return redirect('login')
+        if not request.user.is_authenticated: return redirect(f'/login/?next=/items/{item.pk}/')
         if not request.user.profile.verified or request.user.profile.restricted: raise PermissionDenied()
+        if item.is_sale: return redirect('item',pk=item.pk)
         if form.is_valid():
             try:
                 days=availability(item,form.cleaned_data['start'],form.cleaned_data['end'])
@@ -138,12 +153,23 @@ def item_detail(request,pk):
     return render(request,'market/item.html',{'item':item,'form':form,'quote':quote,'quote_token':quote_token})
 
 @member
+def item_buy(request,pk):
+    item=get_object_or_404(Item.objects.select_related('owner__profile'),pk=pk,intent='sale',status='listed',owner__profile__restricted=False)
+    if item.owner_id==request.user.pk or social.is_blocked(request.user,item.owner): return redirect('item',pk=item.pk)
+    if request.method=='POST':
+        try:
+            o=buy(item.pk,request.user)
+            return redirect('order_payment',pk=o.pk) if o.total>0 else redirect('order',pk=o.pk)
+        except ValidationError as exc: error(request,exc); return redirect('home')
+    return render(request,'market/buy_confirm.html',{'item':item})
+
+@member
 def wanted_edit(request,pk=None):
     obj=get_object_or_404(Wanted,pk=pk,owner=request.user) if pk else None
-    form=WantedForm(request.POST or None,instance=obj)
+    form=WantedForm(request.POST or None,instance=obj,initial={'intent':'buy'} if not obj and request.GET.get('intent')=='buy' else None)
     if request.method=='POST' and form.is_valid():
         obj=form.save(commit=False); obj.owner=request.user; obj.save(); return redirect('wanted',pk=obj.pk)
-    return render(request,'market/form.html',{'form':form,'title':'發布／編輯尋物 / Post or edit a request'})
+    return render(request,'market/publish.html',{'form':form,'kind':'wanted','item':obj,'title':'發布／編輯需求 / Post or edit a request'})
 
 def wanted_detail(request,pk):
     obj=get_object_or_404(Wanted.objects.select_related('owner__profile'),pk=pk)
@@ -162,6 +188,14 @@ def wanted_detail(request,pk):
         notify(obj.owner,'收到尋物回應 / New offer',f'/wanted/{obj.pk}/')
         return redirect('wanted',pk=pk)
     return render(request,'market/wanted.html',{'wanted':obj,'items':items})
+
+@member
+@require_POST
+def wanted_contact(request,pk):
+    obj=get_object_or_404(Wanted,pk=pk,active=True,owner__profile__restricted=False)
+    if obj.owner_id==request.user.pk or social.is_blocked(request.user,obj.owner): raise PermissionDenied()
+    thread,_=Thread.objects.get_or_create(wanted=obj,first=request.user,second=obj.owner,order=None,item=None,buddy=None,lostfound=None)
+    return redirect('thread',pk=thread.pk)
 
 @member
 def dashboard(request):
@@ -255,12 +289,12 @@ def survey(request,pk):
 @member
 def inbox(request):
     me=request.user
-    threads=Thread.objects.filter(Q(first=me)|Q(second=me)).select_related('item','order__item','buddy','lostfound','first__profile','second__profile').order_by('-pk')
+    threads=Thread.objects.filter(Q(first=me)|Q(second=me)).select_related('item','order__item','buddy','lostfound','wanted','first__profile','second__profile').order_by('-pk')
     notifications=Notification.objects.filter(user=me).order_by('-created')[:100]
     if request.method=='POST': Notification.objects.filter(user=me).update(read=True); return redirect('inbox')
     friendships=Friendship.objects.filter(Q(sender=me)|Q(recipient=me)).select_related('sender__profile','recipient__profile').order_by('-created')
     friends=[(f,f.recipient if f.sender_id==me.pk else f.sender) for f in friendships if f.status=='accepted' and not social.is_blocked(f.sender,f.recipient)]
-    return render(request,'market/inbox.html',{'threads':threads,'group_memberships':groups.active_memberships(me),'notifications':notifications,'friends':friends,'blocked_users':User.objects.filter(pk__in=UserBlock.objects.filter(blocker=me).values('blocked_id')).select_related('profile'),
+    return render(request,'market/inbox.html',{'threads':threads,'thread_rows':message_rows(me),'group_memberships':groups.active_memberships(me),'notifications':notifications,'friends':friends,'blocked_users':User.objects.filter(pk__in=UserBlock.objects.filter(blocker=me).values('blocked_id')).select_related('profile'),
         'incoming':[f for f in friendships if f.status=='pending' and f.recipient_id==me.pk],'outgoing':[f for f in friendships if f.status=='pending' and f.sender_id==me.pk]})
 
 @member
@@ -268,12 +302,12 @@ def inbox(request):
 def contact(request,pk):
     item=get_object_or_404(Item,pk=pk,status='listed',owner__profile__restricted=False)
     if item.owner_id==request.user.pk or social.is_blocked(request.user,item.owner): raise PermissionDenied()
-    thread,_=Thread.objects.get_or_create(item=item,first=request.user,second=item.owner,order=None,buddy=None,lostfound=None)
+    thread,_=Thread.objects.get_or_create(item=item,first=request.user,second=item.owner,order=None,buddy=None,lostfound=None,wanted=None)
     return redirect('thread',pk=thread.pk)
 
 @member
 def chat(request,pk):
-    thread=get_object_or_404(Thread.objects.select_related('first__profile','second__profile','item','order__item','buddy','lostfound'),pk=pk)
+    thread=get_object_or_404(Thread.objects.select_related('first__profile','second__profile','item','order__item','buddy','lostfound','wanted'),pk=pk)
     if request.user.pk not in (thread.first_id,thread.second_id): raise PermissionDenied()
     other=thread.second if thread.first_id==request.user.pk else thread.first
     open_=social.can_message(thread,request.user)
@@ -290,7 +324,7 @@ def chat(request,pk):
                 if not Notification.objects.filter(user=other,url=f'/messages/{thread.pk}/',read=False).exists(): notify(other,'收到新訊息 / New message',f'/messages/{thread.pk}/')
         except ValidationError as exc: error(request,exc)
         return redirect('thread',pk=pk)
-    return render(request,'market/chat.html',{'thread':thread,'open':open_,'other':other,
+    return render(request,'market/chat.html',{'thread':thread,'open':open_,'other':other,'contacts':social.contact_state(thread,request.user),'thread_rows':message_rows(request.user),'current_thread':thread.pk,'group_memberships':groups.active_memberships(request.user),
         'blocked':social.is_blocked(request.user,other),'blocked_by_me':UserBlock.objects.filter(blocker=request.user,blocked=other).exists(),
         'chat_messages':list(reversed(thread.messages.select_related('sender__profile').order_by('-created','-pk')[:300]))})
 

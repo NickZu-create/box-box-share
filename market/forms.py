@@ -3,7 +3,8 @@ from django.db import transaction
 from django.forms.utils import ErrorList
 from django.utils import timezone
 from .models import *
-from .services import interval, clean_image
+from datetime import timedelta
+from .services import interval, clean_image, derive_title
 from .i18n import loc
 LABELS = {'title':'物品名稱 / Title','category':'分類 / Category','description':'描述 / Description','condition':'物品狀況 / Condition','daily':'每日租金 HKD / Daily rent','deposit':'押金 HKD / Deposit','available_start':'可借開始 / Available from','available_end':'可借結束 / Available until','max_days':'最長借用天數 / Maximum days','location':'交接地點 / Meet-up location','status':'物品狀態 / Listing status','start':'開始時間 / Start','end':'結束時間 / End','budget':'總預算 HKD / Total budget','active':'公開尋物 / Active request','nickname':'暱稱 / Nickname','avatar':'頭像 / Avatar','bio':'自我介紹 / About me','interests':'興趣 / Interests','skills':'技能 / Skills','languages':'交流語言 / Languages'}
 # Form text is written "繁中 / English"; these show it in the visitor's language, including validation errors.
@@ -39,13 +40,41 @@ class ItemForm(DatesMixin,forms.ModelForm):
     remove_photos=forms.ModelMultipleChoiceField(queryset=ItemPhoto.objects.none(),required=False,widget=forms.CheckboxSelectMultiple,label='移除照片 / Remove photos')
     class Meta:
         model=Item
-        fields=['title','category','description','condition','daily','deposit','available_start','available_end','max_days','location','status']
+        fields=['intent','title','category','description','condition','daily','deposit','available_start','available_end','max_days','location','status']
+        widgets={'intent':forms.RadioSelect}
     def __init__(self,*a,**kw):
         super().__init__(*a,**kw); self.setup()
-        if self.instance.pk: self.fields['remove_photos'].queryset=self.instance.photos.all()
-        else: self.fields.pop('remove_photos')
+        if self.instance.pk:
+            self.fields['remove_photos'].queryset=self.instance.photos.all()
+            # Existing orders were made under this listing type.
+            self.fields['intent'].disabled=True
+        else:
+            self.fields.pop('remove_photos')
+            now=timezone.localtime().replace(second=0,microsecond=0)
+            self.initial.setdefault('available_start',now); self.initial.setdefault('available_end',now+timedelta(days=7))
+            self.initial.setdefault('max_days',7); self.initial.setdefault('deposit',0); self.initial.setdefault('location','CityUHK campus'); self.initial.setdefault('category','other')
+        # A price and a description are enough to post; the rest has sensible defaults.
+        for name in ('title','category','deposit','available_start','available_end','max_days','location','status','intent'): self.fields[name].required=False
+        self.fields['status'].choices=[c for c in self.fields['status'].choices if c[0]!='sold']
     def clean(self):
         d=super().clean()
+        if 'description' not in d or 'daily' not in d: return d
+        inst=self.instance if self.instance.pk else None
+        fallback=lambda name,default: d.get(name) if d.get(name) not in (None,'') else (getattr(inst,name) if inst else default)
+        now=timezone.now().replace(second=0,microsecond=0)
+        d['intent']=d.get('intent') or (inst.intent if inst else 'rent')
+        d['title']=d.get('title') or derive_title(d['description'])
+        d['category']=fallback('category','other')
+        d['location']=fallback('location','CityUHK campus')
+        d['status']=fallback('status','listed')
+        if d['intent']=='sale':
+            d['deposit']=0; d['max_days']=365
+            d['available_start']=inst.available_start if inst else now
+            d['available_end']=inst.available_end if inst else now+timedelta(days=365)
+        else:
+            d['deposit']=fallback('deposit',0); d['max_days']=fallback('max_days',7)
+            d['available_start']=fallback('available_start',now); d['available_end']=fallback('available_end',now+timedelta(days=7))
+            if not self.has_error('available_end') and not self.has_error('available_start'): interval(d['available_start'],d['available_end'])
         old_count=self.instance.photos.count() if self.instance.pk else 0
         removed=len(d.get('remove_photos',[]))
         if old_count-removed+bool(d.get('photo'))>8: raise forms.ValidationError('最多 8 張照片 / Maximum 8 photos')
@@ -54,8 +83,28 @@ class ItemForm(DatesMixin,forms.ModelForm):
 class WantedForm(DatesMixin,forms.ModelForm):
     class Meta:
         model=Wanted
-        fields=['title','category','description','start','end','budget','location','active']
-    def __init__(self,*a,**kw): super().__init__(*a,**kw); self.setup()
+        fields=['intent','title','category','description','start','end','budget','location','active']
+        widgets={'intent':forms.RadioSelect}
+    def __init__(self,*a,**kw):
+        super().__init__(*a,**kw); self.setup()
+        if not self.instance.pk:
+            self.fields.pop('active')
+            now=timezone.localtime().replace(second=0,microsecond=0)
+            self.initial.setdefault('start',now); self.initial.setdefault('end',now+timedelta(days=7)); self.initial.setdefault('location','CityUHK campus'); self.initial.setdefault('category','other')
+        for name in ('title','category','start','end','location','intent'): self.fields[name].required=False
+    def clean(self):
+        d=super().clean()
+        if 'description' not in d or 'budget' not in d: return d
+        inst=self.instance if self.instance.pk else None
+        fallback=lambda name,default: d.get(name) if d.get(name) not in (None,'') else (getattr(inst,name) if inst else default)
+        now=timezone.now().replace(second=0,microsecond=0)
+        d['intent']=d.get('intent') or (inst.intent if inst else 'borrow')
+        d['title']=d.get('title') or derive_title(d['description'])
+        d['category']=fallback('category','other'); d['location']=fallback('location','CityUHK campus')
+        # Buying has no dates; a request stays open for a month.
+        horizon=30 if d['intent']=='buy' else 7
+        d['start']=fallback('start',now); d['end']=fallback('end',now+timedelta(days=horizon))
+        return d
 class BookingForm(DatesMixin,forms.Form):
     start=forms.DateTimeField()
     end=forms.DateTimeField()
@@ -64,8 +113,8 @@ class ProfileForm(Localized,forms.ModelForm):
     remove_avatar=forms.BooleanField(required=False,label='移除目前頭像 / Remove current avatar')
     class Meta:
         model=Profile
-        fields=['nickname','avatar','bio','interests','skills','languages','university','major','academic_year','faculty']
-        labels={**LABELS,'university':'大學（選填） / University (optional)','major':'主修或課程（選填） / Major or Programme (optional)','academic_year':'年級（選填） / Academic year (optional)','faculty':'學院（選填） / Faculty or College (optional)'}
+        fields=['nickname','avatar','bio','interests','skills','languages','university','major','academic_year','faculty','contact_whatsapp','contact_phone','contact_wechat','contact_instagram']
+        labels={**LABELS,'university':'大學（選填） / University (optional)','major':'主修或課程（選填） / Major or Programme (optional)','academic_year':'年級（選填） / Academic year (optional)','faculty':'學院（選填） / Faculty or College (optional)','contact_whatsapp':'WhatsApp（選填） / WhatsApp (optional)','contact_phone':'電話（選填） / Phone (optional)','contact_wechat':'WeChat（選填） / WeChat (optional)','contact_instagram':'Instagram（選填） / Instagram (optional)'}
         # A plain file input. Django's default widget links to the current file's public URL, but photos are
         # private: DatabaseStorage (MEDIA_STORAGE=db, used on Render) has no public URL and raised, so
         # /profile/ returned a server error for every account that had uploaded an avatar.

@@ -13,3 +13,12 @@ def action_label(text):
 
 @register.filter
 def get_item(mapping,key): return mapping.get(key) if hasattr(mapping,'get') else None
+
+@register.simple_tag(takes_context=True)
+def query_with(context,**changes):
+    params=context['request'].GET.copy()
+    for key,value in changes.items():
+        if value: params[key]=value
+        else: params.pop(key,None)
+    encoded=params.urlencode()
+    return '/?'+encoded if encoded else '/'

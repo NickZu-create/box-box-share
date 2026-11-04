@@ -428,10 +428,10 @@ class Buddy(TestCase):
         post=self.new_post(capacity='2');self.act(self.ca,post,'apply');other=self.new_post(title='Badminton',category='buddy',kind='sports')
         self.act(self.ca,other,'apply');self.act(self.ch,other,'accept',application=other.applications.get().pk)
         page=self.ca.get('/my/').content.decode()
-        for text in ('我的借出與借入訂單','我的借出物品','我的尋物','我發布的招募','我的申請','我已加入',f'/orders/{order.pk}/'): self.assertIn(text,page)
+        for text in ('我的訂單','我的借出物品','我的尋物','我發布的招募','我的申請','我已加入',f'/orders/{order.pk}/'): self.assertIn(text,page)
         joined=page.split('我已加入')[1];self.assertIn('Badminton',joined);self.assertNotIn('HK Hackathon 2026',joined)
         self.assertIn('HK Hackathon 2026',page.split('我的申請')[1].split('我已加入')[0])
-        self.assertNotIn('HK Hackathon 2026',page.split('我的借出與借入訂單')[1].split('我的借出物品')[0])
+        self.assertNotIn('HK Hackathon 2026',page.split('我的訂單')[1].split('我的借出物品')[0])
         self.assertIn('待審 1',self.ch.get('/my/').content.decode())
     def test_pages_render_in_all_languages_and_mobile_nav(self):
         post=self.new_post();self.act(self.ca,post,'apply');self.act(self.ch,post,'accept',application=post.applications.get().pk)

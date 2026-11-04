@@ -2,16 +2,16 @@
 {% block title %}{% tr '付款' 'Payment' %} #{{ order.pk }} · {{ t.brand }}{% endblock %}
 {% block head %}<link rel="stylesheet" href="{% static 'market/payment.css' %}"><script src="{% static 'market/payment.js' %}" defer></script>{% endblock %}
 {% block content %}<section class="page narrow pay-page">
-<a class="breadcrumb" href="/orders/{{ order.pk }}/">← {% tr '借用訂單' 'Borrowing order' %} #{{ order.pk }}</a>
+<a class="breadcrumb" href="/orders/{{ order.pk }}/">← {% if order.is_purchase %}{% tr '購買訂單' 'Purchase order' %}{% else %}{% tr '借用訂單' 'Borrowing order' %}{% endif %} #{{ order.pk }}</a>
 <h1>{% tr '付款' 'Payment' %}</h1>
-<p class="hint">{{ order.snapshot.title }} · {% tr '付款給物主' 'Pay the lender' %} {{ order.item.owner.profile.nickname }}</p>
+<p class="hint">{{ order.snapshot.title }} · {% if order.is_purchase %}{% tr '付款給賣家' 'Pay the seller' %}{% else %}{% tr '付款給物主' 'Pay the lender' %}{% endif %} {{ order.item.owner.profile.nickname }}</p>
 {% if order.total <= 0 %}
 <div class="panel"><p>{% tr '此訂單無需付款。' 'No payment is needed for this order.' %}</p><a class="text-link" href="/orders/{{ order.pk }}/">{% tr '返回訂單' 'Back to order' %} →</a></div>
 {% else %}
 <div class="panel pay-summary">
   <small>{% tr '應付總額' 'Total to pay' %}</small>
   <strong class="pay-total">HK$ {{ order.total }}</strong>
-  <dl class="pay-breakdown"><dt>{% tr '租金' 'Rent' %}</dt><dd>HK$ {{ order.rent }}</dd><dt>{% tr '押金' 'Deposit' %}</dt><dd>HK$ {{ order.deposit }}</dd></dl>
+  {% if not order.is_purchase %}<dl class="pay-breakdown"><dt>{% tr '租金' 'Rent' %}</dt><dd>HK$ {{ order.rent }}</dd><dt>{% tr '押金' 'Deposit' %}</dt><dd>HK$ {{ order.deposit }}</dd></dl>{% endif %}
   {% if currencies %}<div class="pay-converter is-loading" data-pay-converter data-amount="{{ amount }}" data-rates-url="/fx/hkd/" data-failed="{% tr '匯率獲取失敗，請以港幣金額為準' 'Could not get the exchange rate. Please go by the HKD amount.' %}" data-updated="{% tr '更新於' 'Updated' %}" hidden>
     <label for="pay-currency">{% tr '換算幣種' 'Convert to' %}</label>
     <select id="pay-currency" disabled>{% for currency in currencies %}<option value="{{ currency }}">{% if currency == 'HKD' %}{% tr '港幣 HKD' 'HKD · Hong Kong dollar' %}{% else %}{% tr '人民幣 CNY' 'CNY · Chinese yuan' %}{% endif %}</option>{% endfor %}</select>

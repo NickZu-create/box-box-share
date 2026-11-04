@@ -1,0 +1,97 @@
+/* Restrained refinements on top of the established Box Box visual system. */
+.experience-refined :where(button,a,input,select,textarea,summary):focus-visible{outline:2px solid #b72755;outline-offset:3px}
+.experience-refined :where(button,.button,summary,a){-webkit-tap-highlight-color:transparent}
+.experience-refined :where(.button,.text-button,.dialog-close,.item-share,.detail-share,.market-filter-tabs button){transition:background-color 140ms ease,border-color 140ms ease,box-shadow 140ms ease,transform 120ms ease}
+.experience-refined :where(.button,.item-share,.detail-share,.market-filter-tabs button):active{transform:translateY(1px)}
+.experience-refined :where(button:disabled,.button[aria-disabled=true]){cursor:not-allowed;transform:none;box-shadow:none}
+.experience-refined :where(input,textarea,select){transition:border-color 140ms ease,box-shadow 140ms ease,background-color 140ms ease}
+.experience-refined :where(input,textarea,select):focus{border-color:#bc6f86;box-shadow:0 0 0 3px #f3dce6;outline:none}
+.experience-refined :where(input,textarea,select)[aria-invalid=true],.experience-refined :where(input,textarea,select):user-invalid{border-color:#a93a46;background-color:#fff9f8}
+.experience-refined select{cursor:pointer}
+.experience-refined .thread-row{transition:background-color 140ms ease,box-shadow 140ms ease}
+.experience-refined .thread-row:focus-visible{outline-offset:-3px}
+.experience-refined .more-panel,.experience-refined .menu-content{border-color:#ead7df;box-shadow:0 14px 34px #4f223324}
+.experience-refined details[open]>.more-panel,.experience-refined details[open]>.menu-content,.experience-refined .lang-menu[open]>form{animation:experience-menu-in 140ms ease both}
+.experience-refined .more-panel>a,.experience-refined .menu-content>a{transition:background-color 140ms ease,color 140ms ease}
+.experience-refined .mobile-primary{overflow:visible}
+.experience-refined .mobile-primary .more-panel>a:active{background:#f6e8ee}
+.experience-refined .publish-options>summary,.experience-refined .contact-details>summary{min-height:44px;align-items:center}
+.experience-refined .publish-options>summary>.ui-icon{transition:transform 160ms ease}
+.experience-refined .market-dialog{padding:26px;border-radius:16px;border-color:#e7d3dd;box-shadow:0 20px 72px #35202a30}
+.experience-refined .market-dialog[open]{animation:experience-dialog-in 160ms ease both}
+.experience-refined .market-dialog::backdrop{background:#35202a66}
+.experience-refined .market-dialog-heading{align-items:flex-start;margin-bottom:14px}
+.experience-refined .market-dialog h2{font-size:22px;line-height:1.35}
+.experience-refined .market-dialog p{line-height:1.75}
+.experience-refined .market-dialog .dialog-close{min-width:44px;min-height:44px;padding:8px;flex-shrink:0}
+.experience-refined .market-dialog .dialog-actions{gap:10px;margin-top:22px}
+.experience-refined .market-dialog .dialog-actions>.button{min-height:44px}
+.experience-refined .market-toast{font-size:13px;padding:12px 16px;border:1px solid #ffffff15;pointer-events:none}
+.experience-refined .market-profile-status:empty{display:none}
+.experience-refined .market-profile-status:not(:empty){border-radius:8px;background:#edf5ee;color:#3c6748;padding:9px 12px;line-height:1.5;margin:0}
+
+/* Profile: retain the actual form and controls, divide the long edit surface. */
+.experience-refined .experience-profile-page{width:calc(100% - 48px);max-width:760px;margin:28px auto 48px}
+.experience-profile-page>h1{font-size:28px;line-height:1.35;margin:10px 0 20px}
+.experience-profile-page>.experience-account-summary{padding:20px 24px;border:1px solid #eadde2;border-radius:14px;background:#fffdfc;box-shadow:none}
+.experience-account-summary .owner-box{margin:0 0 12px;padding:0;border:0;background:transparent}
+.experience-account-summary>.hint{font-size:12px;line-height:1.75;margin:0 0 10px}
+.experience-account-summary>.text-link{display:inline-flex;align-items:center;min-height:36px;font-size:12px}
+.experience-profile-form{padding:0!important;border:0!important;background:transparent!important;box-shadow:none!important;display:flex;flex-direction:column;gap:16px;margin-top:20px}
+.experience-profile-form>.experience-profile-section{margin:0;padding:24px;border:1px solid #eadde2;border-radius:14px;background:#fff;min-width:0}
+.experience-profile-form .experience-section-heading{margin:0 0 20px}
+.experience-profile-form .experience-section-heading h2{font-size:18px;line-height:1.4;margin:0 0 6px;color:#35202a}
+.experience-profile-form .experience-section-heading p{font-size:13px;line-height:1.7;color:#705d65;margin:0}
+.experience-profile-form .profile-field-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px 20px}
+.experience-profile-form .profile-field-grid>p,.experience-profile-form .profile-field-grid>label{margin:0;min-width:0}
+.experience-profile-form .profile-field-wide{grid-column:1/-1}
+.experience-profile-form :where(.profile-field-grid>p>label,.profile-field-grid>label){display:block;font-size:13px;font-weight:550;color:#55404b;line-height:1.5}
+.experience-profile-form :where(input:not([type=checkbox]),textarea,select){width:100%;min-width:0;box-sizing:border-box;min-height:46px;padding:11px 12px;border:1px solid #e7d8df;border-radius:8px;background:#fffdfb;color:#35202a;font-size:14px;line-height:1.5;margin-top:7px}
+.experience-profile-form textarea{resize:vertical;min-height:96px}
+.experience-profile-form input[type=file]{font-size:12px;background:#faf7f8}
+.experience-profile-form .helptext{display:block;font-size:11px;line-height:1.65;color:#7c6871;margin-top:6px}
+.experience-profile-form .experience-form-note{font-size:12px;line-height:1.75;margin:18px 0 0;color:#705d65}
+.experience-profile-form fieldset.profile-contacts{border-top:1px solid #eadde2}
+.experience-profile-form fieldset.profile-contacts>legend{padding:0 6px;font-size:18px;font-weight:650;color:#35202a}
+.experience-profile-form fieldset.profile-contacts>.hint{font-size:12px;line-height:1.75;margin:2px 0 18px}
+.experience-profile-form .contact-rule{font-size:12px;line-height:1.75;margin:18px 0 0;padding:12px 14px;background:#fbf1f5;border-radius:8px}
+.experience-save-bar{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:16px 2px 0;border-top:1px solid #eadde2}
+.experience-save-bar>.actions{display:flex;margin:0;order:2;flex-shrink:0}
+.experience-save-bar>.market-profile-status{font-size:12px;max-width:68%;order:1}
+.experience-save-bar .button{min-width:144px;min-height:46px}
+
+@media(hover:hover) and (pointer:fine){
+ .experience-refined :where(.item-tile,.wanted-tile,.recruitment-row,.lf-card){transition:transform 160ms ease,border-color 160ms ease,box-shadow 160ms ease}
+ .experience-refined :where(.item-tile,.wanted-tile,.recruitment-row,.lf-card):hover{transform:translateY(-2px);border-color:#dbb8c7;box-shadow:0 7px 20px #5b253b0b}
+ .experience-refined .thread-row:hover{background:#faf0f4}
+ .experience-refined .button:hover{box-shadow:0 3px 8px #6e29431a}
+}
+@media(max-width:700px){
+ .experience-refined .experience-profile-page{width:calc(100% - 32px);max-width:760px;margin:18px auto 30px}
+ .experience-profile-page>h1{font-size:23px;margin-bottom:16px}
+ .experience-profile-page>.experience-account-summary{padding:18px;border-radius:12px}
+ .experience-profile-form{gap:14px;margin-top:16px}
+ .experience-profile-form>.experience-profile-section{padding:18px;border-radius:12px}
+ .experience-profile-form .profile-field-grid{grid-template-columns:1fr;gap:16px}
+ .experience-profile-form .profile-field-wide{grid-column:auto}
+ .experience-profile-form .experience-section-heading{margin-bottom:16px}
+ .experience-profile-form .experience-section-heading h2,.experience-profile-form fieldset.profile-contacts>legend{font-size:16px}
+ .experience-profile-form .experience-section-heading p{font-size:12px}
+ .experience-profile-form :where(input:not([type=checkbox]),textarea,select){font-size:16px}
+ .experience-save-bar{align-items:stretch;flex-direction:column;gap:10px;padding-top:16px}
+ .experience-save-bar>.actions{order:2;width:100%}
+ .experience-save-bar .button{width:100%}
+ .experience-save-bar>.market-profile-status{max-width:none;order:1}
+ .experience-refined .market-dialog{padding:20px;border-radius:14px;max-height:calc(100dvh - 24px)}
+ .experience-refined .market-dialog h2{font-size:20px}
+ .experience-refined :where(.item-share,.detail-share){width:44px;height:44px;padding:12px}
+ .experience-refined .shareable-item>.item-share{right:6px;top:6px}
+ .experience-refined .shareable-item .tile-category{padding-right:40px}
+ .experience-refined .market-filter-tabs button{min-height:40px}
+}
+@keyframes experience-menu-in{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
+@keyframes experience-dialog-in{from{opacity:.65;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+@media(prefers-reduced-motion:reduce){
+ .experience-refined :where(button,.button,summary,a,input,select,textarea,.item-tile,.wanted-tile,.recruitment-row,.lf-card,.thread-row,.market-dialog,.more-panel,.menu-content,.lang-menu form,.ui-icon){animation:none!important;transition:none!important;scroll-behavior:auto!important}
+ .experience-refined :where(.item-tile,.wanted-tile,.recruitment-row,.lf-card,.button,.item-share,.detail-share,.market-filter-tabs button):is(:hover,:active){transform:none!important}
+}

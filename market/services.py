@@ -1,4 +1,4 @@
-import hashlib, secrets, math, json
+import hashlib, secrets, math, json, re
 from datetime import timedelta
 from decimal import Decimal
 from functools import wraps
@@ -42,14 +42,14 @@ def throttle(key,limit,seconds):
     if b.count >= limit: raise ValidationError('Too many requests. Try later / 請稍後再試')
     b.count+=1; b.save()
 
-def send_login(email,ip,origin):
+def send_login(email,ip,origin,next_url=''):
     # Only trust the proxy's client-IP header when the app is reachable solely through that proxy.
     throttle('ip:'+ip,20,3600)
     email=valid_email(email)
     throttle('minute:'+email,1,60)
     throttle('email:'+email,5,3600)
     raw=secrets.token_urlsafe(32)
-    token=LoginToken.objects.create(email=email,digest=hashlib.sha256(raw.encode()).hexdigest(),expires=timezone.now()+timedelta(minutes=15))
+    token=LoginToken.objects.create(email=email,digest=hashlib.sha256(raw.encode()).hexdigest(),expires=timezone.now()+timedelta(minutes=15),next_url=next_url[:300])
     url=origin+'/verify/'+raw+'/'
     try:
         send_mail('Box Box Share · 學校郵箱登入 / Sign in',f'登入連結 / Sign-in link (15 minutes, single use):\n{url}\n\n由 Box Box 營運，並非 CityUHK 官方平台。We never ask for your school password.',settings.DEFAULT_FROM_EMAIL,[email],fail_silently=False)
@@ -97,7 +97,7 @@ def availability(item,start,end,exclude=None):
 
 def notify(user,text,url): Notification.objects.create(user=user,text=text,url=url)
 # Order steps are recorded by key; people see a label in their language (old notifications hold the bare key).
-ORDER_ACTIONS={'accept':'物主已接受申請 / Application accepted','cancel':'預約已取消 / Booking cancelled','handover':'已確認交接 / Handover confirmed','return':'已確認歸還 / Return confirmed','rent':'已確認租金 / Rent confirmed','deposit':'已確認押金 / Deposit confirmed','refund':'已確認退還押金 / Deposit refund confirmed','extend':'申請延期 / Extension requested','approve_extension':'已批准延期 / Extension approved','reject_extension':'已拒絕延期 / Extension declined','dispute':'已提出糾紛 / Dispute opened'}
+ORDER_ACTIONS={'accept':'物主已接受申請 / Application accepted','cancel':'預約已取消 / Booking cancelled','handover':'已確認交接 / Handover confirmed','return':'已確認歸還 / Return confirmed','rent':'已確認租金 / Rent confirmed','deposit':'已確認押金 / Deposit confirmed','refund':'已確認退還押金 / Deposit refund confirmed','extend':'申請延期 / Extension requested','approve_extension':'已批准延期 / Extension approved','reject_extension':'已拒絕延期 / Extension declined','dispute':'已提出糾紛 / Dispute opened','buy':'有人購買了你的物品 / Your item was purchased'}
 def event(order,actor,action,data=None):
     Audit.objects.create(order=order,actor=actor,action=action,data=data or {})
     other=order.borrower if actor.pk==order.item.owner_id else order.item.owner
@@ -105,8 +105,13 @@ def event(order,actor,action,data=None):
     url=f'/orders/{order.pk}/pay/' if action=='accept' and order.total>0 else f'/orders/{order.pk}/'
     notify(other,ORDER_ACTIONS.get(action,action),url)
 
+def derive_title(description):
+    # The first sentence of the description, so a listing only needs a price and a description.
+    text=(description or '').strip()
+    return re.split(r'[\n。！？.!?]',text,maxsplit=1)[0].strip()[:100] or text[:100]
+
 def item_terms(item):
-    return {'title':item.title,'daily':str(item.daily),'deposit':str(item.deposit),'condition':item.condition,'location':item.location,'rules':RULES,'max_days':item.max_days}
+    return {'intent':item.intent,'title':item.title,'daily':str(item.daily),'deposit':str(item.deposit),'condition':item.condition,'location':item.location,'rules':RULES,'max_days':item.max_days}
 def terms_fingerprint(item): return hashlib.sha256(json.dumps(item_terms(item),sort_keys=True).encode()).hexdigest()
 
 @transaction.atomic
@@ -118,6 +123,7 @@ def apply(item_id,user,start,end,expected=None):
     if not user.profile.verified or user.profile.restricted: raise PermissionDenied()
     valid_email(user.email)
     if item.owner_id==user.pk: raise ValidationError('Cannot borrow your own item / 不可申請自己的物品')
+    if item.is_sale: raise ValidationError('This item is for sale / 此物品只供出售')
     if start<timezone.now(): raise ValidationError('Start must be in the future / 開始時間須在未來')
     days=availability(item,start,end)
     if expected and expected['fingerprint']!=terms_fingerprint(item): raise ValidationError('Listing terms changed. Check the new quote / 物品價格或條款已更改，請重新確認費用')
@@ -125,6 +131,29 @@ def apply(item_id,user,start,end,expected=None):
     Thread.objects.create(order=o,first=user,second=item.owner)
     event(o,user,'申請借用 / Application submitted')
     return o
+
+@transaction.atomic
+def buy(item_id,user):
+    # The price is fixed, so a purchase needs no approval. The row lock lets only one buyer win.
+    item=Item.objects.select_for_update().get(pk=item_id)
+    from .social import is_blocked
+    if is_blocked(user,item.owner): raise PermissionDenied()
+    if item.owner.profile.restricted or not item.owner.is_active: raise ValidationError('Seller unavailable / 賣家帳號受限')
+    if not user.profile.verified or user.profile.restricted: raise PermissionDenied()
+    valid_email(user.email)
+    if not item.is_sale: raise ValidationError('This item is not for sale / 此物品不設出售')
+    if item.owner_id==user.pk: raise ValidationError('Cannot buy your own item / 不可購買自己的物品')
+    if item.status!='listed': raise ValidationError('This item is no longer available / 此物品已不可購買')
+    now=timezone.now()
+    o=Order.objects.create(kind='purchase',item=item,borrower=user,start=now,end=now+timedelta(days=30),status='accepted',rent=item.daily,deposit=0,snapshot={**item_terms(item),'days':0})
+    item.status='sold'; item.save(update_fields=['status'])
+    Thread.objects.create(order=o,first=user,second=item.owner)
+    event(o,user,'buy')
+    return o
+
+def release_sale(order,item):
+    if order.is_purchase and item.status=='sold':
+        item.status='listed'; item.save(update_fields=['status'])
 
 @transaction.atomic
 def act(order_id,user,action,new_end=None,photo=None):
@@ -142,12 +171,16 @@ def act(order_id,user,action,new_end=None,photo=None):
         availability(item,o.start,o.end,exclude=o.pk); o.status='accepted'
     elif action=='cancel':
         if o.status not in ('pending','accepted') or o.hand_owner or o.hand_borrower: raise ValidationError('After handover starts, open a dispute / 交接開始後請提出糾紛')
-        o.status='cancelled'
+        o.status='cancelled'; release_sale(o,item)
     elif action=='handover':
-        if o.status!='accepted': raise ValidationError('Accept first / 請先接受申請')
+        # A disputed sale can still record its handover, the step an administrator needs in order to close it.
+        disputed_sale=o.is_purchase and o.status=='disputed'
+        if o.status!='accepted' and not disputed_sale: raise ValidationError('Accept first / 請先接受申請')
         setattr(o,'hand_'+side,True)
-        if o.hand_owner and o.hand_borrower: o.status='active'
+        # A sale ends at handover; there is nothing to return.
+        if o.hand_owner and o.hand_borrower and not disputed_sale: o.status='completed' if o.is_purchase else 'active'
     elif action=='return':
+        if o.is_purchase: raise ValidationError('Nothing to return for a purchase / 購買訂單無需歸還')
         if o.status not in ('active','return_pending','disputed'): raise ValidationError('Invalid return / 歸還狀態不適用')
         setattr(o,'return_'+side,True)
         disputed=o.status=='disputed'
@@ -156,10 +189,11 @@ def act(order_id,user,action,new_end=None,photo=None):
             if not disputed: o.status='completed'
             if not o.actual_return: o.actual_return=timezone.now()
     elif action in ('rent','deposit','refund'):
+        if o.is_purchase and action!='rent': raise ValidationError('No deposit on a purchase / 購買訂單沒有押金')
         if o.status not in ('accepted','active','return_pending','completed','disputed'): raise ValidationError('Invalid payment confirmation / 狀態不適用')
         setattr(o,action+'_'+side,True)
     elif action=='extend':
-        if owner or o.status not in ('accepted','active') or not new_end or new_end<=o.end: raise ValidationError('Invalid extension / 延期不適用')
+        if o.is_purchase or owner or o.status not in ('accepted','active') or not new_end or new_end<=o.end: raise ValidationError('Invalid extension / 延期不適用')
         if new_end>item.available_end or interval(o.start,new_end)>o.snapshot['max_days']: raise ValidationError('Outside availability / 超出期限')
         o.extension_end=new_end; data={'requested_end':new_end.isoformat()}
     elif action=='approve_extension':
@@ -189,11 +223,14 @@ def resolve_dispute(order_id,admin_user,outcome):
     o=Order.objects.select_for_update().get(pk=order_id)
     if o.status!='disputed': raise ValidationError('Not disputed / 並非糾紛訂單')
     if outcome=='completed':
-        if not (o.return_owner and o.return_borrower): raise ValidationError('Both parties must confirm return / 須雙方確認歸還')
+        if o.is_purchase:
+            if not (o.hand_owner and o.hand_borrower): raise ValidationError('Both parties must confirm handover / 須雙方確認交接')
+        elif not (o.return_owner and o.return_borrower): raise ValidationError('Both parties must confirm return / 須雙方確認歸還')
     elif outcome=='cancelled':
         if o.hand_owner or o.hand_borrower: raise ValidationError('Handover started; require return / 已開始交接，須先歸還')
     else: raise ValidationError('Invalid outcome')
     o.status=outcome; o.save()
+    if outcome=='cancelled': release_sale(o,o.item)
     Audit.objects.create(order=o,actor=admin_user,action='管理員解決糾紛 / Moderator resolution',data={'outcome':outcome})
     for person in (o.item.owner,o.borrower): notify(person,'糾紛已處理 / Dispute resolved',f'/orders/{o.pk}/')
 

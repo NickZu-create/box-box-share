@@ -26,7 +26,7 @@ def avoided_rate():
 
 def impact_summary():
     rate,survey=avoided_rate()
-    done=dict(Order.objects.filter(status='completed').values_list('item__category').annotate(n=Count('pk')))
+    done=dict(Order.objects.filter(status='completed',kind='rental').values_list('item__category').annotate(n=Count('pk')))
     listed=dict(Item.objects.filter(status='listed').values_list('category').annotate(n=Count('pk')))
     rows=[]; total=Decimal('0.0')
     for key,label in CATEGORIES:

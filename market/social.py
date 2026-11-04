@@ -140,9 +140,29 @@ def can_message(thread,user):
     other=thread.second if thread.first_id==user.pk else thread.first
     if is_blocked(user,other): return False
     if thread.lostfound_id: return thread.lostfound.status=='open'
-    if thread.order_id or thread.item_id: return True
+    if thread.order_id or thread.item_id or thread.wanted_id: return True
     if thread.buddy_id: return thread.buddy.applications.filter(user_id=thread.first_id,status='accepted').exists()
     return are_friends(user,other)
+
+CONTACT_MESSAGES = 4
+CONTACT_FIELDS = [('whatsapp','WhatsApp','WhatsApp'),('phone','電話','Phone'),('wechat','WeChat','WeChat'),('instagram','Instagram','Instagram')]
+
+def contacts_unlocked(thread):
+    # Both people must have taken part: four messages from one side never reveal anything.
+    senders=set(); count=0
+    for sender,text in thread.messages.values_list('sender_id','text'):
+        if text.strip():
+            count+=1; senders.add(sender)
+    return count>=CONTACT_MESSAGES and {thread.first_id,thread.second_id}<=senders,min(count,CONTACT_MESSAGES)
+
+def contact_state(thread,user):
+    """What the viewer may see in this conversation. The other person's details are only included once unlocked."""
+    other=thread.second if thread.first_id==user.pk else thread.first
+    unlocked,count=contacts_unlocked(thread)
+    blocked=is_blocked(user,other) or other.profile.restricted
+    rows=lambda profile:[{'zh':zh,'en':en,'value':getattr(profile,'contact_'+key)} for key,zh,en in CONTACT_FIELDS]
+    show=unlocked and not blocked
+    return {'unlocked':show,'blocked':blocked,'count':count,'needed':CONTACT_MESSAGES,'theirs':rows(other.profile) if show else [],'mine':rows(user.profile) if show else []}
 
 # A block is directional to manage, mutual for new contact. Historical records remain readable.
 def is_blocked(a,b):

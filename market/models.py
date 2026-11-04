@@ -23,37 +23,51 @@ class Profile(models.Model):
     faculty = models.CharField(max_length=160,blank=True,default='')
     # Reserved for a future approved identity integration; never accepted by ProfileForm.
     university_verified_at = models.DateTimeField(null=True,blank=True,editable=False)
+    # Never shown on public pages. Only revealed inside a conversation, see social.contact_state().
+    contact_whatsapp = models.CharField(max_length=80,blank=True,default='')
+    contact_phone = models.CharField(max_length=80,blank=True,default='')
+    contact_wechat = models.CharField(max_length=80,blank=True,default='')
+    contact_instagram = models.CharField(max_length=80,blank=True,default='')
     def __str__(self): return self.nickname
 class LoginToken(models.Model):
     email = models.EmailField()
     digest = models.CharField(max_length=64,unique=True)
     expires = models.DateTimeField()
     used = models.BooleanField(default=False)
+    # Where to return after sign-in, e.g. the item the visitor wanted to buy.
+    next_url = models.CharField(max_length=300,blank=True,default='')
 class RateBucket(models.Model):
     key = models.CharField(max_length=100,unique=True)
     count = models.PositiveIntegerField(default=0)
     expires = models.DateTimeField()
+ITEM_INTENTS = [('rent','租借 / Rent'),('sale','出售 / For sale')]
+WANTED_INTENTS = [('borrow','求借 / Want to borrow'),('buy','求購 / Want to buy')]
 class Item(models.Model):
     owner = models.ForeignKey(User,on_delete=models.CASCADE)
+    intent = models.CharField(max_length=10,choices=ITEM_INTENTS,default='rent')
     title = models.CharField(max_length=100)
     category = models.CharField(max_length=20,choices=CATEGORIES)
     description = models.TextField(max_length=4000)
-    condition = models.CharField(max_length=200)
+    condition = models.CharField(max_length=200,blank=True)
+    # Daily rent for a rental; the one-off price for a sale.
     daily = models.DecimalField(max_digits=9,decimal_places=2,validators=[MinValueValidator(0)])
     deposit = models.DecimalField(max_digits=9,decimal_places=2,validators=[MinValueValidator(0)])
     available_start = models.DateTimeField()
     available_end = models.DateTimeField()
     max_days = models.PositiveIntegerField(default=14,validators=[MinValueValidator(1),MaxValueValidator(365)])
     location = models.CharField(max_length=160)
-    status = models.CharField(max_length=15,choices=[('listed','上架 / Listed'),('paused','暫停 / Paused'),('removed','下架 / Removed')],default='listed')
+    status = models.CharField(max_length=15,choices=[('listed','上架 / Listed'),('paused','暫停 / Paused'),('removed','下架 / Removed'),('sold','已售出 / Sold')],default='listed')
     created = models.DateTimeField(auto_now_add=True)
     def __str__(self): return self.title
+    @property
+    def is_sale(self): return self.intent=='sale'
 class ItemPhoto(models.Model):
     item = models.ForeignKey(Item,on_delete=models.CASCADE,related_name='photos')
     image = models.ImageField(upload_to='items/')
     def __str__(self): return f'Photo #{self.pk}'
 class Wanted(models.Model):
     owner = models.ForeignKey(User,on_delete=models.CASCADE)
+    intent = models.CharField(max_length=10,choices=WANTED_INTENTS,default='borrow')
     title = models.CharField(max_length=100)
     category = models.CharField(max_length=20,choices=CATEGORIES)
     description = models.TextField(max_length=4000)
@@ -148,7 +162,10 @@ class UserBlock(models.Model):
 class Order(models.Model):
     STATES = [('pending','待確認 / Pending'),('accepted','已接受 / Accepted'),('active','借用中 / On loan'),('return_pending','歸還待確認 / Return pending'),('completed','已完成 / Completed'),('cancelled','已取消 / Cancelled'),('disputed','糾紛中 / Disputed')]
     LOCKED = ['accepted','active','return_pending','disputed']
+    KINDS = [('rental','租借 / Rental'),('purchase','購買 / Purchase')]
+    kind = models.CharField(max_length=10,choices=KINDS,default='rental')
     item = models.ForeignKey(Item,on_delete=models.PROTECT)
+    # The buyer, for a purchase. A purchase's price is held in rent, and deposit is zero.
     borrower = models.ForeignKey(User,on_delete=models.PROTECT)
     start = models.DateTimeField()
     end = models.DateTimeField()
@@ -174,8 +191,13 @@ class Order(models.Model):
     @property
     def total(self): return self.rent+self.deposit
     @property
+    def is_purchase(self): return self.kind=='purchase'
+    @property
+    def status_label(self):
+        return '待交接 / Awaiting handover' if self.is_purchase and self.status=='accepted' else self.get_status_display()
+    @property
     def overdue(self):
-        if self.status in self.LOCKED and self.end < timezone.now():
+        if not self.is_purchase and self.status in self.LOCKED and self.end < timezone.now():
             return math.ceil((timezone.now()-self.end).total_seconds()/3600)
         return 0
 class Audit(models.Model):
@@ -196,6 +218,7 @@ class Thread(models.Model):
     # Host <-> accepted applicant. A thread with no item, order or buddy post is a chat between friends.
     buddy = models.ForeignKey(BuddyPost,on_delete=models.CASCADE,null=True,blank=True,related_name='threads')
     lostfound = models.ForeignKey(LostFoundPost,on_delete=models.CASCADE,null=True,blank=True,related_name='threads')
+    wanted = models.ForeignKey(Wanted,on_delete=models.CASCADE,null=True,blank=True,related_name='threads')
     first = models.ForeignKey(User,on_delete=models.CASCADE,related_name='threads_first')
     second = models.ForeignKey(User,on_delete=models.CASCADE,related_name='threads_second')
 class Message(models.Model):
