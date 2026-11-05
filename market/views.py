@@ -313,7 +313,7 @@ def item_detail(request,pk):
                     if expected['item']!=item.pk or expected['start']!=payload['start'] or expected['end']!=payload['end']: raise ValidationError('Dates changed. Check price again / 日期已更改，請重新計算費用')
                     o=apply(item.pk,request.user,form.cleaned_data['start'],form.cleaned_data['end'],expected=expected); email_owner_about_request(o,request.build_absolute_uri('/').rstrip('/')); return redirect('order',pk=o.pk)
             except ValidationError as exc: form.add_error(None,exc)
-    return render(request,'market/item.html',{'item':item,'form':form,'quote':quote,'quote_token':quote_token})
+    return render(request,'market/item.html',{'item':item,'form':form,'quote':quote,'quote_token':quote_token,'calendar':booking_calendar(item) if not item.is_sale else ''})
 
 @member
 def item_buy(request,pk):
@@ -383,8 +383,10 @@ def order_detail(request,pk):
             action=request.POST.get('action')
             # An owner cancelling a request they have not accepted is declining it.
             decided='accept' if action=='accept' else 'decline' if action=='decline' or (action=='cancel' and o.status=='pending' and request.user.pk==o.item.owner_id and not o.is_purchase) else None
-            act(o.pk,request.user,action,new_end,photo)
-            if decided: email_order_result(o,decided=='accept',request.build_absolute_uri('/').rstrip('/'))
+            result=act(o.pk,request.user,action,new_end,photo)
+            origin=request.build_absolute_uri('/').rstrip('/')
+            if decided: email_order_result(o,decided=='accept',origin)
+            for closed in result.closed_requests: email_order_result(closed,False,origin,taken=True)
             messages.success(request,'操作已記錄 / Confirmation recorded')
         except ValidationError as exc: error(request,exc)
         return redirect('order',pk=pk)

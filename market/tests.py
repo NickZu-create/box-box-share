@@ -97,9 +97,13 @@ class CampusFlow(TestCase):
         first=self.booking();second=self.booking()
         act(first.pk,self.owner,'accept')
         with self.assertRaises(ValidationError): act(second.pk,self.owner,'accept')
-        next_order=apply(self.item.pk,self.borrower,self.end,self.end+timedelta(days=1));act(next_order.pk,self.owner,'accept')
-        act(first.pk,self.owner,'cancel');act(second.pk,self.owner,'accept')
-        second.refresh_from_db();self.assertEqual(second.status,'accepted')
+        second.refresh_from_db();self.assertEqual(second.status,'cancelled')
+        # Bookings go by the day: the rest of the last day is taken, the next day is free.
+        with self.assertRaises(ValidationError): apply(self.item.pk,self.borrower,self.end,self.end+timedelta(hours=2))
+        next_order=apply(self.item.pk,self.borrower,self.end+timedelta(days=1),self.end+timedelta(days=2));act(next_order.pk,self.owner,'accept')
+        act(first.pk,self.owner,'cancel')
+        again=self.booking();act(again.pk,self.owner,'accept')
+        again.refresh_from_db();self.assertEqual(again.status,'accepted')
     def test_changed_quote_cannot_silently_change_price(self):
         dates={'start':self.start.strftime('%Y-%m-%dT%H:%M'),'end':self.end.strftime('%Y-%m-%dT%H:%M'),'action':'quote'}
         response=self.b.post(f'/items/{self.item.pk}/',dates)
@@ -130,10 +134,11 @@ class CampusFlow(TestCase):
         self.assertEqual(o.rent,Decimal('55.50'));self.assertEqual(o.snapshot,snapshot)
     def test_extension_requires_approval_and_conflict_recheck(self):
         a=self.booking();act(a.pk,self.owner,'accept')
-        b=apply(self.item.pk,self.borrower,self.end,self.end+timedelta(days=1));act(b.pk,self.owner,'accept')
-        act(a.pk,self.borrower,'extend',self.end+timedelta(hours=1));a.refresh_from_db();self.assertEqual(a.end,self.end)
+        b=apply(self.item.pk,self.borrower,self.end+timedelta(days=1),self.end+timedelta(days=2));act(b.pk,self.owner,'accept')
+        longer=self.end+timedelta(days=1,hours=1)
+        act(a.pk,self.borrower,'extend',longer);a.refresh_from_db();self.assertEqual(a.end,self.end)
         with self.assertRaises(ValidationError): act(a.pk,self.owner,'approve_extension')
-        act(b.pk,self.borrower,'cancel');act(a.pk,self.owner,'approve_extension');a.refresh_from_db();self.assertEqual(a.end,self.end+timedelta(hours=1))
+        act(b.pk,self.borrower,'cancel');act(a.pk,self.owner,'approve_extension');a.refresh_from_db();self.assertEqual(a.end,longer)
     def test_bilateral_states_and_payment(self):
         o=self.booking();act(o.pk,self.owner,'accept');act(o.pk,self.owner,'rent');o.refresh_from_db()
         self.assertTrue(o.rent_owner);self.assertFalse(o.rent_borrower)

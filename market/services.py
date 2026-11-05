@@ -120,9 +120,49 @@ def availability(item,start,end,exclude=None):
     days=interval(start,end)
     if item.status!='listed' or start<item.available_start or end>item.available_end or days>item.max_days:
         raise ValidationError('Outside availability / 超出可借日期或最長期限')
-    if Order.objects.filter(item=item,status__in=Order.LOCKED,start__lt=end,end__gt=start).exclude(pk=exclude).exists():
-        raise ValidationError('Reservation overlaps / 與已接受預約重疊')
+    if orders_on_same_days(item,start,end,Order.LOCKED,exclude).exists():
+        raise ValidationError('這段時間已被預約，請選擇其他日期 / These dates are already booked. Please choose others')
     return days
+
+def day_span(start,end):
+    # The local days a loan touches: its first midnight, and the midnight after its last day.
+    # An end at exactly midnight does not reach into that new day.
+    first=timezone.localtime(start).replace(hour=0,minute=0,second=0,microsecond=0)
+    last=timezone.localtime(end-timedelta(microseconds=1)).replace(hour=0,minute=0,second=0,microsecond=0)
+    return first,last+timedelta(days=1)
+
+def orders_on_same_days(item,start,end,statuses,exclude=None):
+    # Bookings are by the day: the calendar greys out a whole day, so the rule here is the same.
+    first,after=day_span(start,end)
+    return Order.objects.filter(item=item,status__in=statuses,start__lt=after,end__gt=first).exclude(pk=exclude)
+
+def booking_calendar(item):
+    """What the date picker needs, as JSON: the days that can be chosen and the days already taken."""
+    now=timezone.localtime()
+    # Requests must start in the future, so the first choosable time is the next quarter hour after a short margin.
+    soonest=(now+timedelta(minutes=15)).replace(second=0,microsecond=0)
+    soonest+=timedelta(minutes=-soonest.minute%15)
+    first=max(timezone.localtime(item.available_start),soonest)
+    last=timezone.localtime(item.available_end)
+    if last.hour==0 and last.minute==0: last-=timedelta(minutes=1)
+    booked=set()
+    for start,end in Order.objects.filter(item=item,status__in=Order.LOCKED,end__gt=first,start__lt=item.available_end).values_list('start','end'):
+        day,after=day_span(start,end)
+        day=max(day,first.replace(hour=0,minute=0,second=0,microsecond=0))
+        while day<after and day.date()<=last.date():
+            booked.add(day.strftime('%Y-%m-%d'))
+            day+=timedelta(days=1)
+    return json.dumps({'booked':sorted(booked),'first':first.strftime('%Y-%m-%d'),'firstTime':first.strftime('%H:%M'),'last':last.strftime('%Y-%m-%d'),'lastTime':last.strftime('%H:%M'),'maxDays':item.max_days})
+
+def close_waiting_requests(order,item,actor):
+    # Once these days are taken, requests still waiting on them can no longer succeed: tell those people now.
+    closed=[]
+    for waiting in orders_on_same_days(item,order.start,order.end,['pending'],order.pk).select_for_update():
+        waiting.status='cancelled'
+        waiting.save()
+        event(waiting,actor,'slot_taken')
+        closed.append(waiting)
+    return closed
 
 def notification_kind(url):
     if url.startswith('/orders/'): return 'request'
@@ -131,7 +171,7 @@ def notification_kind(url):
     return 'system'
 def notify(user,text,url,kind=None,detail=''): Notification.objects.create(user=user,text=text,url=url,kind=kind or notification_kind(url),detail=detail[:200])
 # Order steps are recorded by key; people see a label in their language (old notifications hold the bare key).
-ORDER_ACTIONS={'accept':'物主已接受申請 / Application accepted','cancel':'預約已取消 / Booking cancelled','decline':'物主未接受申請 / Application declined','handover':'已確認交接 / Handover confirmed','return':'已確認歸還 / Return confirmed','rent':'已確認租金 / Rent confirmed','deposit':'已確認押金 / Deposit confirmed','refund':'已確認退還押金 / Deposit refund confirmed','extend':'申請延期 / Extension requested','approve_extension':'已批准延期 / Extension approved','reject_extension':'已拒絕延期 / Extension declined','dispute':'已提出糾紛 / Dispute opened','buy':'有人購買了你的物品 / Your item was purchased'}
+ORDER_ACTIONS={'accept':'物主已接受申請 / Application accepted','cancel':'預約已取消 / Booking cancelled','decline':'物主未接受申請 / Application declined','slot_taken':'該時段已被其他人預約 / These dates were taken by another booking','handover':'已確認交接 / Handover confirmed','return':'已確認歸還 / Return confirmed','rent':'已確認租金 / Rent confirmed','deposit':'已確認押金 / Deposit confirmed','refund':'已確認退還押金 / Deposit refund confirmed','extend':'申請延期 / Extension requested','approve_extension':'已批准延期 / Extension approved','reject_extension':'已拒絕延期 / Extension declined','dispute':'已提出糾紛 / Dispute opened','buy':'有人購買了你的物品 / Your item was purchased'}
 def event(order,actor,action,data=None,detail=''):
     Audit.objects.create(order=order,actor=actor,action=action,data=data or {})
     other=order.borrower if actor.pk==order.item.owner_id else order.item.owner
@@ -185,7 +225,7 @@ def email_owner_about_request(order,origin):
         log.error('Borrow request email failed for order %s: %s',order.pk,type(exc).__name__)
         return False
 
-def email_order_result(order,accepted,origin):
+def email_order_result(order,accepted,origin,taken=False):
     # The applicant hears the outcome; the owner made the decision and needs no mail about it.
     # Like every reminder, it can never undo or block the decision itself.
     borrower=order.borrower
@@ -197,6 +237,7 @@ def email_order_result(order,accepted,origin):
         subject=f'Box Box Share · 申請已同意 / Request accepted: {title}'
     else:
         message=f'{owner_name} 未能接受你的借用申請，可以看看其他物品或日期。 / {owner_name} declined your request. You can look at other items or dates.'
+        if taken: message='你申請的時段已被其他人預約，可以看看其他日期。 / The dates you asked for were taken by another booking. You can look at other dates.'
         subject=f'Box Box Share · 申請已被拒絕 / Request declined: {title}'
     context={'accepted':accepted,'message':message,'title':title,'total':order.total,'start':timezone.localtime(order.start).strftime('%Y-%m-%d %H:%M'),'end':timezone.localtime(order.end).strftime('%Y-%m-%d %H:%M'),'order_url':f'{origin}/orders/{order.pk}/','profile_url':f'{origin}/profile/'}
     try:
@@ -301,6 +342,7 @@ def act(order_id,user,action,new_end=None,photo=None):
         if action not in ('handover','return','dispute'): raise ValidationError('Photo not applicable / 此操作不接受照片')
         Evidence.objects.create(order=o,actor=user,image=photo,phase=action)
     o.save(); event(o,user,action,data)
+    o.closed_requests=close_waiting_requests(o,item,user) if action in ('accept','approve_extension') else []
     return o
 
 @transaction.atomic
