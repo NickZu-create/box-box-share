@@ -2,8 +2,7 @@
 {% block legacy_css %}{% endblock %}
 {% block body_class %}preview-app {% if wanted %}view-seeking{% else %}view-explore{% endif %} collection-page{% endblock %}
 {% block head %}<link rel="stylesheet" href="{% static 'market/ui/collection.css' %}"><link rel="stylesheet" href="{% static 'market/ui/hero-motion.css' %}"><script src="{% static 'market/ui/collection-motion.js' %}" defer></script>{% endblock %}
-{% block publish_href %}{% if wanted %}/wanted/new/{% else %}/items/new/{% endif %}{% endblock %}
-{% block publish_label %}{% if wanted %}{{ t.new_wanted }}{% else %}{{ t.publish }}{% endif %}{% endblock %}
+{% block publish_entry %}{% if wanted %}{% include 'market/_publish_entry.html' with href='/wanted/new/' label=t.new_wanted %}{% else %}{% include 'market/_publish_entry.html' with href='/items/new/' label=t.publish %}{% endif %}{% endblock %}
 {% block content %}<div class="app-container">
 {% if wanted %}<section class="explore-intro seeking-intro hero-motion" id="collection-hero"><div><span class="eyebrow">{% tr 'SEEKING · 讓需要遇見分享' 'SEEKING / SOMEONE NEARBY CAN HELP' %}</span><h1>{% tr '你需要的，或許就在隔壁。' 'What you need might be next door.' %}</h1><p>{% tr '說說你想借或想買什麼，讓閒置與需要在校園裡相遇。' 'Tell the community what you would like to borrow or buy.' %}</p></div>{% include 'market/_brand_art.html' %}</section>
 {% else %}<div class="borrow-hero-slot"><section class="hero borrow-hero hero-motion" id="collection-hero">{% include 'market/_hero_copy.html' %}</section></div>{% endif %}

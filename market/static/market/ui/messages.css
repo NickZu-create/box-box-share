@@ -174,3 +174,15 @@
   .wa-chat-who{padding-left:0}
   .wa-page{padding:0 16px 80px}
 }
+.site-header .header-actions .signin.button{display:inline-flex;align-items:center;justify-content:center;width:auto;min-width:0;height:auto;min-height:40px;padding:0 14px;white-space:nowrap;font-size:13px;color:#fff}
+.header-user{display:inline-flex;align-items:center;gap:8px;min-width:0;min-height:44px;color:inherit;text-decoration:none}
+.header-user:hover .header-user-name{color:#a51a3a}
+.site-header .header-user .avatar{display:flex;flex:0 0 34px;align-items:center;justify-content:center;width:34px;height:34px;overflow:hidden;border-radius:50%;font-size:13px}
+.header-user .avatar img{width:100%;height:100%;object-fit:cover}
+.header-user-name{overflow:hidden;max-width:120px;font-size:13px;font-weight:600;text-overflow:ellipsis;white-space:nowrap}
+.publish-fab{position:fixed;right:24px;bottom:24px;z-index:35;display:inline-flex;align-items:center;gap:6px;min-height:48px;padding:0 20px 0 16px;border-radius:24px;background:#d2234a;box-shadow:0 8px 24px rgba(120,20,50,.32);color:#fff;font:700 14px/1 system-ui,sans-serif;text-decoration:none;white-space:nowrap}
+.publish-fab:hover{background:#a51a3a;color:#fff}
+.publish-fab .ui-icon{width:20px;height:20px;filter:brightness(0) invert(1)}
+@media(max-width:1023px){.publish-fab{right:16px;bottom:calc(76px + env(safe-area-inset-bottom))}}
+@media(max-width:560px){.header-user-name{max-width:76px}.site-header .header-actions .signin.button{min-height:38px;padding:0 12px}}
+@media(max-width:340px){.header-user-name{display:none}}
