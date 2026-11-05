@@ -728,6 +728,12 @@ def media(request,kind,pk):
     response['Content-Security-Policy']="default-src 'none'"
     return response
 
+# Files a service asks to find at the site root to confirm we own the domain. These values are public by design.
+DOMAIN_VERIFICATION = {'bbc52af11e58bbe2adf42249ed6e004b.txt':'9c999473e7f72d4ece9fd0ae47ef0f55874a39c3'}
+def domain_verification(request,name):
+    if name not in DOMAIN_VERIFICATION: raise Http404()
+    return HttpResponse(DOMAIN_VERIFICATION[name],content_type='text/plain; charset=utf-8')
+
 def rules(request): return render(request,'market/rules.html')
 def impact(request): return render(request,'market/impact.html',{'impact':impact_summary(),'method_url':METHOD_URL})
 
