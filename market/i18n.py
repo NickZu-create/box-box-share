@@ -15,6 +15,8 @@ COOKIE = 'lang'
 current = ContextVar('ui_lang',default=None)
 CJK = re.compile(r'[㐀-鿿豈-﫿]')
 # OpenCC converts characters and phrases; these swap Hong Kong wording for the usual mainland terms.
+# Only for the site's own wording: what members write keeps their words, converted character by character.
+INTERFACE_WORDING = [('温书搭子','学习搭子'),('温书','复习'),('食饭','吃饭'),('打波','打球'),('这部装置','这台设备')]
 WORDING = [('讯息','消息'),('帐号','账号'),('帐户','账户'),('暱称','昵称'),('登入','登录'),('登出','退出登录'),('连结','链接'),('预设','默认'),('储存','保存'),('设定','设置'),('搜寻','搜索'),('伺服器','服务器'),('网路','网络'),('档案','文件'),('重新整理','刷新'),('资讯','信息'),('程式','程序'),('支援','支持'),('透过','通过'),('社群','社区'),('介面','界面'),('选单','菜单')]
 
 @lru_cache(maxsize=1)
@@ -40,7 +42,10 @@ def hant(text):
     return _to_traditional().convert(text)
 
 def zh(text, lang):
-    return hans(text) if lang=='hans' else text
+    if lang!='hans': return text
+    out = hans(text)
+    for old, new in INTERFACE_WORDING: out = out.replace(old, new)
+    return out
 
 def tr(zh_text, en_text, lang=None):
     lang = lang or current.get() or 'zh'

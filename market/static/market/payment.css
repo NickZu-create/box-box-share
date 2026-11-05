@@ -101,3 +101,27 @@
   .pay-dialog[open],.pay-dialog[open]::backdrop,.pay-dialog.is-closing,.pay-dialog.is-closing::backdrop{animation:none}
   .pay-spinner{animation-duration:2s}
 }
+.pay-actions{display:flex;flex-direction:column;gap:8px;margin:12px 0}
+.pay-actions[hidden]{display:none}
+.pay-actions .button{justify-content:center;width:100%;min-height:46px}
+.pay-actions .button[hidden]{display:none}
+.pay-actions .button:disabled{opacity:.55}
+.pay-actions .hint,.pay-actions .notice{margin:2px 0 0}
+.pay-save-desktop{display:none}
+/* The pop-up takes on the colours of the service being paid with. --pay-strong keeps white button text readable. */
+.pay-dialog[data-channel=wechat]{--pay-brand:var(--pay-wechat);--pay-strong:#058a45;--pay-tint:#e9f9f0}
+.pay-dialog[data-channel=alipay_cn]{--pay-brand:var(--pay-alipay);--pay-strong:var(--pay-alipay-dark);--pay-tint:#e9f2ff}
+.pay-dialog[data-channel=alipay_hk]{--pay-brand:var(--pay-alipay-hk);--pay-strong:var(--pay-alipay-hk-text);--pay-tint:#e6f6fe}
+.pay-dialog[data-channel=fps]{--pay-brand:var(--pay-fps);--pay-strong:var(--pay-fps-dark);--pay-tint:#e9f0f8}
+.pay-dialog[data-channel]{overflow:hidden;background:var(--pay-tint)}
+.pay-dialog[data-channel] .pay-dialog-body{padding-top:0}
+.pay-dialog[data-channel] .pay-dialog-body h2{margin:0 -22px 6px;padding:16px 48px;background:var(--pay-brand);color:#fff}
+.pay-dialog[data-channel] .pay-dialog-close{top:8px;right:8px;background:#ffffff33;color:#fff}
+.pay-dialog[data-channel] .pay-dialog-amount{color:var(--pay-strong);font-size:20px}
+.pay-dialog[data-channel] .pay-qr-frame{padding:10px;border-radius:12px;background:#fff}
+.pay-dialog[data-channel] .pay-spinner{border-top-color:var(--pay-brand)}
+.pay-dialog[data-channel] .text-link{color:var(--pay-strong);border-color:var(--pay-strong)}
+.pay-dialog[data-channel] .pay-actions .button{border:1px solid var(--pay-strong);background:var(--pay-strong);color:#fff;box-shadow:none}
+.pay-dialog[data-channel] .pay-actions .button.secondary{background:#fff;color:var(--pay-strong)}
+.pay-dialog[data-channel] .pay-actions .notice{border-color:var(--pay-brand);background:#fff;color:var(--ink)}
+@media(hover:hover){.pay-dialog[data-channel] .pay-dialog-close:hover{background:#ffffff55}}

@@ -380,7 +380,11 @@ def order_detail(request,pk):
                 field=forms.DateTimeField(input_formats=['%Y-%m-%dT%H:%M'])
                 new_end=field.clean(request.POST.get('new_end'))
             photo=clean_image(request.FILES.get('photo'))
-            act(o.pk,request.user,request.POST.get('action'),new_end,photo)
+            action=request.POST.get('action')
+            # An owner cancelling a request they have not accepted is declining it.
+            decided='accept' if action=='accept' else 'decline' if action=='decline' or (action=='cancel' and o.status=='pending' and request.user.pk==o.item.owner_id and not o.is_purchase) else None
+            act(o.pk,request.user,action,new_end,photo)
+            if decided: email_order_result(o,decided=='accept',request.build_absolute_uri('/').rstrip('/'))
             messages.success(request,'操作已記錄 / Confirmation recorded')
         except ValidationError as exc: error(request,exc)
         return redirect('order',pk=pk)
@@ -528,13 +532,29 @@ def group_chat(request,pk):
     return render(request,'market/group_chat.html',{**feed_context(request,group=group),'group':group,'membership':row,'roster':roster,'last_message_id':max((m.pk for m in chat_messages),default=0),
         'chat_messages':chat_messages})
 
+@member
+def people_search(request):
+    # POST, so the address searched for stays out of URLs and logs.
+    email,found,searched,count='',None,False,0
+    if request.method=='POST':
+        email=request.POST.get('email','').strip()[:254]
+        try:
+            throttle('people-search:'+str(request.user.pk),30,3600)
+            searched=True
+            found=find_member_by_email(email,request.user)
+            if found: count=Item.objects.filter(owner=found.user,status='listed').count()
+        except ValidationError as exc: error(request,exc)
+    return render(request,'market/people_search.html',{'email':email,'found':found,'searched':searched,'item_count':count})
+
 def person(request,pk):
     person=get_object_or_404(Profile.objects.select_related('user'),user_id=pk,restricted=False)
     reviews=Review.objects.filter(recipient_id=pk).select_related('author__profile').order_by('-created')
     me=request.user
     member=me.is_authenticated and hasattr(me,'profile') and me.profile.verified
     posts=BuddyPost.objects.filter(owner_id=pk,status='open').annotate(finish_at=Coalesce('ends','starts')).filter(finish_at__gt=timezone.now()).order_by('starts')[:6]
-    return render(request,'market/person.html',{'person':person,'reviews':reviews,'average':reviews.aggregate(a=Avg('rating'))['a'],'member':member,'friendship':social.friendship(me,person.user) if member and me.pk!=pk else None,'posts':posts,'blocked':social.is_blocked(me,person.user),'blocked_by_me':UserBlock.objects.filter(blocker_id=me.pk,blocked=person.user).exists() if me.is_authenticated else False})
+    # What they list is public on the site anyway; someone blocked in either direction does not see it here.
+    items=[] if social.is_blocked(me,person.user) else Item.objects.filter(owner_id=pk,status='listed').prefetch_related('photos').order_by('-created')[:24]
+    return render(request,'market/person.html',{'items':items,'person':person,'reviews':reviews,'average':reviews.aggregate(a=Avg('rating'))['a'],'member':member,'friendship':social.friendship(me,person.user) if member and me.pk!=pk else None,'posts':posts,'blocked':social.is_blocked(me,person.user),'blocked_by_me':UserBlock.objects.filter(blocker_id=me.pk,blocked=person.user).exists() if me.is_authenticated else False})
 
 @member
 @require_POST

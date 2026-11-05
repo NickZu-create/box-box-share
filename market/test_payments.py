@@ -12,7 +12,7 @@ from .models import Item, Notification, Order, PaymentCode, StoredFile
 from .services import act, apply
 from .tests import DB_STORAGE, make_item, make_user, photo
 
-RATES = {'result':'success','base_code':'HKD','time_last_update_unix':1793750551,'time_next_update_unix':int(time.time())+3600,'rates':{'HKD':1,'CNY':0.85192,'USD':0.128}}
+RATES = {'result':'success','base_code':'HKD','time_last_update_unix':1793750551,'time_next_update_unix':int(time.time())+3600,'rates':{'HKD':1,'CNY':0.85192,'USD':0.128,'JPY':19.5,'EUR':0.11}}
 
 class Response:
     def __init__(self,body): self.body=json.dumps(body).encode()
@@ -87,13 +87,13 @@ class PaymentPage(PaymentBase):
     def test_only_enabled_channels_render(self):
         self.code('wechat');self.accept();page=self.b.get(self.url)
         self.assertContains(page,'pay-wechat');self.assertNotContains(page,'class="pay-button pay-alipay"');self.assertNotContains(page,'class="pay-button pay-fps"')
-        self.assertEqual(page.context['currencies'],['HKD','CNY'])
+        self.assertEqual(page.context['currencies'],['HKD','CNY','USD','JPY'])
     def test_alipay_menu_lists_only_enabled_options(self):
         hk=self.code('alipay_hk');self.accept();page=self.b.get(self.url)
         self.assertContains(page,'class="pay-button pay-alipay"');self.assertContains(page,'pay-sub-hk');self.assertNotContains(page,'pay-sub-cn')
-        self.assertContains(page,f'/media/payment/{hk.pk}/');self.assertEqual(page.context['currencies'],['HKD'])
+        self.assertContains(page,f'/media/payment/{hk.pk}/');self.assertEqual(page.context['currencies'],['HKD','CNY','USD','JPY'])
         self.code('alipay_cn');page=self.b.get(self.url)
-        self.assertContains(page,'pay-sub-cn');self.assertContains(page,'pay-sub-hk');self.assertEqual(page.context['currencies'],['HKD','CNY'])
+        self.assertContains(page,'pay-sub-cn');self.assertContains(page,'pay-sub-hk');self.assertEqual(page.context['currencies'],['HKD','CNY','USD','JPY'])
     def test_restricted_lender_offers_nothing(self):
         self.code();self.accept();self.owner.profile.restricted=True;self.owner.profile.save()
         self.assertContains(self.b.get(self.url),'pay-empty')
@@ -199,7 +199,7 @@ class ExchangeRates(PaymentBase):
         with mock.patch('market.payments.urlopen',return_value=Response(RATES)) as request:
             first=self.b.get('/fx/hkd/');second=self.c.get('/fx/hkd/')
         self.assertEqual(first.status_code,200)
-        self.assertEqual(first.json(),{'rates':{'HKD':'1','CNY':'0.85192'},'updated':1793750551})
+        self.assertEqual(first.json(),{'rates':{'HKD':'1','CNY':'0.85192','USD':'0.128','JPY':'19.5'},'updated':1793750551})
         self.assertEqual(second.json(),first.json());self.assertEqual(request.call_count,1)
     def test_failure_returns_503_and_is_not_retried_immediately(self):
         with mock.patch('market.payments.urlopen',side_effect=OSError('down')) as request:
@@ -212,8 +212,8 @@ class ExchangeRates(PaymentBase):
             with mock.patch('market.payments.urlopen',return_value=Response(body)):
                 self.assertEqual(self.b.get('/fx/hkd/').status_code,503)
     def test_wrong_base_and_invalid_rates_use_the_failure_fallback(self):
-        invalid=[{**RATES,'base_code':'USD'},{**RATES,'rates':{'HKD':2,'CNY':1}}]
-        invalid += [{**RATES,'rates':{'HKD':1,'CNY':value}} for value in ('NaN','Infinity','not-a-rate','1E9999','1E-9999',0,-1)]
+        invalid=[{**RATES,'base_code':'USD'},{**RATES,'rates':{'HKD':2,'CNY':1,'USD':1,'JPY':1}}]
+        invalid += [{**RATES,'rates':{'HKD':1,'CNY':value,'USD':0.128,'JPY':19.5}} for value in ('NaN','Infinity','not-a-rate','1E9999','1E-9999',0,-1)]
         for body in invalid:
             with self.subTest(body=body):
                 cache.clear()

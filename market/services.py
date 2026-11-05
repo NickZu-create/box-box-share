@@ -185,6 +185,38 @@ def email_owner_about_request(order,origin):
         log.error('Borrow request email failed for order %s: %s',order.pk,type(exc).__name__)
         return False
 
+def email_order_result(order,accepted,origin):
+    # The applicant hears the outcome; the owner made the decision and needs no mail about it.
+    # Like every reminder, it can never undo or block the decision itself.
+    borrower=order.borrower
+    if not borrower.profile.request_emails: return False
+    owner_name=order.item.owner.profile.nickname
+    title=' '.join((order.snapshot.get('title') or order.item.title).split())[:60]
+    if accepted:
+        message=f'{owner_name} 已同意你的借用申請，請按約定交接。 / {owner_name} accepted your request. Arrange the handover as agreed.'
+        subject=f'Box Box Share · 申請已同意 / Request accepted: {title}'
+    else:
+        message=f'{owner_name} 未能接受你的借用申請，可以看看其他物品或日期。 / {owner_name} declined your request. You can look at other items or dates.'
+        subject=f'Box Box Share · 申請已被拒絕 / Request declined: {title}'
+    context={'accepted':accepted,'message':message,'title':title,'total':order.total,'start':timezone.localtime(order.start).strftime('%Y-%m-%d %H:%M'),'end':timezone.localtime(order.end).strftime('%Y-%m-%d %H:%M'),'order_url':f'{origin}/orders/{order.pk}/','profile_url':f'{origin}/profile/'}
+    try:
+        throttle('request-email:everyone',80,86400)
+        send_email(subject,f"{message}\n\n{title}\n{context['start']} – {context['end']} · HK$ {order.total}\n\n查看訂單 / View order:\n{context['order_url']}\n\n不想再收到？在個人資料關閉 / Turn these emails off in your profile: {context['profile_url']}",'market/email_order_result.html',context,borrower.email)
+        return True
+    except ValidationError: return False
+    except Exception as exc:
+        log.error('Order result email failed for order %s: %s',order.pk,type(exc).__name__)
+        return False
+
+def find_member_by_email(email,searcher):
+    # Whole address only, so this cannot be used to list members. Nothing distinguishes "not registered" from "hidden".
+    email=email.strip().lower()
+    if not email: return None
+    found=Profile.objects.filter(user__email__iexact=email,verified=True,restricted=False,searchable=True,user__is_active=True).select_related('user').first()
+    if found is None: return None
+    from .social import is_blocked
+    return None if is_blocked(searcher,found.user) else found
+
 @transaction.atomic
 def buy(item_id,user):
     # The price is fixed, so a purchase needs no approval. The row lock lets only one buyer win.

@@ -9,9 +9,8 @@ from .models import Order, PaymentCode
 
 # Orders the borrower can still pay for: from acceptance until the return is fully confirmed.
 PAYABLE = ('accepted','active','return_pending')
-# Currencies offered by the converter for each channel; the dropdown is the union of the lender's channels.
-CHANNEL_CURRENCIES = {'wechat':('CNY','HKD'),'alipay_cn':('CNY',),'alipay_hk':('HKD',),'fps':('HKD','CNY')}
-CURRENCY_ORDER = ('HKD','CNY')
+# The currencies a buyer can choose to pay in. HKD comes first and is the default.
+CURRENCY_ORDER = ('HKD','CNY','USD','JPY')
 RATES_KEY = 'payments:hkd-rates'
 FAILURE_SECONDS = 300
 MAX_RATES_SECONDS = 86400
@@ -21,8 +20,7 @@ def available_codes(owner):
     return {code.channel:code for code in PaymentCode.objects.filter(owner=owner)}
 
 def currencies_for(channels):
-    wanted={currency for channel in channels for currency in CHANNEL_CURRENCIES[channel]}
-    return [currency for currency in CURRENCY_ORDER if currency in wanted]
+    return list(CURRENCY_ORDER) if channels else []
 
 def confirmation_context(order):
     """Existing flags record confirmations, never a verified outstanding balance."""

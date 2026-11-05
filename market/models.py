@@ -28,7 +28,8 @@ class Profile(models.Model):
     contact_phone = models.CharField(max_length=80,blank=True,default='')
     contact_wechat = models.CharField(max_length=80,blank=True,default='')
     contact_instagram = models.CharField(max_length=80,blank=True,default='')
-    request_emails = models.BooleanField('借用申請郵件提醒 / Borrow request emails',default=True,help_text='有人申請借用你的物品時發送郵件提醒 / Email me when someone asks to borrow my item')
+    request_emails = models.BooleanField('借用申請郵件提醒 / Borrow request emails',default=True,help_text='有人申請借用你的物品，或申請有結果時發送郵件 / Email me about new borrow requests and their results')
+    searchable = models.BooleanField('允許用郵箱搜尋到我 / Let members find me by email',default=True,help_text='其他成員輸入你的完整郵箱時可以找到你 / Other members can find you by entering your full email')
     def __str__(self): return self.nickname
 class LoginToken(models.Model):
     email = models.EmailField()
